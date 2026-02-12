@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Node/Vite
+pdf-to-excel-uploader/node_modules/
+pdf-to-excel-uploader/dist/
+
+# Local/temp artifacts
+temp_batch/
+tmp_*
+
+# Generated output files in repo root
+/output*.xlsx
+/output*.json
+/run_*.xlsx
+/run_*.json
+/filled_template*.xlsx
+/template_*.xlsx
+/template_*.json
+
