@@ -1,9 +1,3 @@
 {
-  "buildCommand": "npm --prefix pdf-to-excel-uploader ci && npm --prefix pdf-to-excel-uploader run build && cp pdf-to-excel-uploader/dist/index.html index.html",
-  "functions": {
-    "api/index.py": {
-      "maxDuration": 60,
-      "includeFiles": "{app.py,pdf_quote_extractor/**,config.yaml,templates/**,pdf-to-excel-uploader/dist/**}"
-    }
-  }
+  "buildCommand": "npm --prefix pdf-to-excel-uploader ci && npm --prefix pdf-to-excel-uploader run build && cp pdf-to-excel-uploader/dist/index.html index.html"
 }
