@@ -3,10 +3,7 @@
   "functions": {
     "app.py": {
       "maxDuration": 60,
-      "includeFiles": [
-        "templates/**",
-        "pdf-to-excel-uploader/dist/**"
-      ]
+      "includeFiles": "{templates/**,pdf-to-excel-uploader/dist/**}"
     }
   }
 }
