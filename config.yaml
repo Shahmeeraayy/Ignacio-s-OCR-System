@@ -1,0 +1,58 @@
+﻿field_patterns:
+  quote_number:
+    - 'Quote\s*#:\s*([A-Z0-9\-]+)'
+  expiration_date:
+    - 'Expiration Date:\s*([0-9]{1,2}/[0-9]{1,2}/[0-9]{4})'
+  subscription_period:
+    - 'Subscription Period:\s*([^\n\r]+)'
+  payment_method:
+    - 'Payment Method:\s*([^\n\r]+)'
+  total_raw:
+    - '\bTOTAL:\s*([A-Z$][A-Z$\s0-9,.\-]+)'
+  overall_total_raw:
+    - 'Overall Total:\s*([$A-Z\s0-9,.\-]+)'
+  payment_year_1_raw:
+    - 'Payment Year 1:\s*([$0-9,.\-]+)'
+  payment_year_2_raw:
+    - 'Payment Year 2:\s*([$0-9,.\-]+)'
+  payment_year_3_raw:
+    - 'Payment Year 3:\s*([$0-9,.\-]+)'
+  regional_director_email:
+    - '([a-zA-Z0-9._%+\-]+@netskope\.com)'
+  payment_terms:
+    - '\b(Net\s*[0-9]+)\b'
+
+table_settings:
+  vertical_strategy: 'lines'
+  horizontal_strategy: 'lines'
+
+line_item_rules:
+  header_contains:
+    - 'Service/Product Name'
+    - 'Service/Product'
+    - 'Code/SKU'
+    - 'Subscription'
+    - 'Term'
+    - 'List Unit Price'
+    - 'Discount'
+    - 'Net Unit Price'
+    - 'Net Total'
+  min_columns: 8
+
+normalization:
+  currency_default: 'USD'
+  date_input_formats:
+    - '%m/%d/%Y'
+    - '%m/%d/%y'
+
+validation:
+  money_tolerance: 0.01
+  critical_rules:
+    - 'table_presence'
+    - 'line_item_presence'
+    - 'total_vs_line_items'
+    - 'total_vs_overall_total'
+
+ocr:
+  min_native_text_chars: 50
+  dpi: 300

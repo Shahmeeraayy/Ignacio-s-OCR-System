@@ -1,0 +1,12 @@
+{
+  "buildCommand": "cd pdf-to-excel-uploader && npm ci && npm run build",
+  "functions": {
+    "app.py": {
+      "maxDuration": 60,
+      "includeFiles": [
+        "templates/**",
+        "pdf-to-excel-uploader/dist/**"
+      ]
+    }
+  }
+}
