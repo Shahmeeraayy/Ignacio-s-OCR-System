@@ -44,7 +44,7 @@ def test_template_fill_for_quote_fixture(tmp_path):
     assert ws["D5"].value == "12/24/2025"
     assert ws["G5"].value == "12/30/2025"
     assert ws["H5"].value == "12/30/2025"
-    assert "Netskope Dedicated" in (ws["K5"].value or "")
+    assert ws["K5"].value == "NK-EGRESS- DIP"
     assert ws["L5"].value == 10000
     assert ws["M5"].value == 60
     assert ws["N5"].value == 0.844872
@@ -55,7 +55,7 @@ def test_template_fill_for_quote_fixture(tmp_path):
     assert ws["R5"].value == "12/31/2025"
     assert ws["S5"].value == "12/30/2028"
     assert ws["V5"].value == "Q-220053-2"
-    assert ws["W5"].value == "NK-EGRESS- DIP"
+    assert ws["W5"].value in (None, "")
     assert ws["X5"].value == "Q-220053-2"
 
     # Row 6: second parsed line item.
@@ -66,7 +66,8 @@ def test_template_fill_for_quote_fixture(tmp_path):
     assert ws["P6"].value == 0.472
     assert ws["N6"].number_format == "0.00%"
     assert ws["P6"].number_format == "0.00%"
-    assert ws["W6"].value == "NK-SSLI"
+    assert ws["K6"].value == "NK-SSLI"
+    assert ws["W6"].value in (None, "")
 
 
 def test_template_only_mode_skips_audit_workbook(tmp_path):
