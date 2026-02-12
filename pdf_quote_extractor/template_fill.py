@@ -178,7 +178,7 @@ def _build_template_rows(
                 "Date": creation_date,
                 "Expires": expiration_date,
                 "ExpectedClose": expiration_date,
-                "Item": _clean_single_line(item.get("service_name")),
+                "Item": _clean_single_line(item.get("sku")),
                 "Quantity": _parse_quantity(item.get("units_qty")),
                 "Salesprice": sales_price,
                 "Salesdiscount": sales_discount,
@@ -189,7 +189,7 @@ def _build_template_rows(
                 "Serial#Supported": None,
                 "Rebate": None,
                 "Opportunity": quote_id,
-                "Memo (Line)": _clean_single_line(item.get("sku")),
+                "Memo (Line)": None,
                 "Quote ID (Line)": quote_id,
             }
             rows.append(row)
