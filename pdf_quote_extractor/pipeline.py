@@ -100,13 +100,15 @@ def process_one_pdf(
             line_items=line_items,
             config=config,
         )
-        line_items = select_line_items_for_total(
+        reconciled_line_items = select_line_items_for_total(
             line_items=line_items,
             total_value=business_summary.get("total_value"),
             tolerance=float(config.get("validation", {}).get("money_tolerance", 0.01)),
         )
         business_summary["line_items_total_value"] = (
-            sum(item.get("net_total_value") or 0.0 for item in line_items) if line_items else None
+            sum(item.get("net_total_value") or 0.0 for item in reconciled_line_items)
+            if reconciled_line_items
+            else None
         )
         validation_rows, critical_failed = run_validation(
             file_name=file_name,
