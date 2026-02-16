@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from .business import extract_business_summary, parse_line_items
+from .business import extract_business_summary, parse_line_items, select_line_items_for_total
 from .config import load_config
 from .io_utils import gather_pdfs
 from .raw_extract import extract_pdf_raw
@@ -99,6 +99,14 @@ def process_one_pdf(
             tables_structured=raw_result.get("tables_structured", []),
             line_items=line_items,
             config=config,
+        )
+        line_items = select_line_items_for_total(
+            line_items=line_items,
+            total_value=business_summary.get("total_value"),
+            tolerance=float(config.get("validation", {}).get("money_tolerance", 0.01)),
+        )
+        business_summary["line_items_total_value"] = (
+            sum(item.get("net_total_value") or 0.0 for item in line_items) if line_items else None
         )
         validation_rows, critical_failed = run_validation(
             file_name=file_name,

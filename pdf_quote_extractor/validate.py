@@ -112,7 +112,25 @@ def run_validation(
         )
 
     overall_total = business_summary.get("overall_total_value")
-    if total_value is not None and overall_total is not None:
+    if total_value is None:
+        add(
+            "total_vs_overall_total",
+            "critical",
+            False,
+            f"total={total_value}, overall_total={overall_total}",
+            "total numeric",
+            "Unable to compare TOTAL and Overall Total because TOTAL is missing.",
+        )
+    elif overall_total is None:
+        add(
+            "total_vs_overall_total",
+            "critical",
+            True,
+            f"total={total_value}, overall_total={overall_total}",
+            "overall_total optional",
+            "Overall Total is not present in this quote layout; rule treated as informational.",
+        )
+    else:
         diff = abs(float(total_value) - float(overall_total))
         add(
             "total_vs_overall_total",
@@ -122,16 +140,6 @@ def run_validation(
             f"<= {tolerance}",
             "TOTAL and Overall Total should match.",
         )
-    else:
-        add(
-            "total_vs_overall_total",
-            "critical",
-            False,
-            f"total={total_value}, overall_total={overall_total}",
-            "both numeric",
-            "Unable to compare TOTAL and Overall Total.",
-        )
-
     links = raw_result.get("links", [])
     add(
         "link_capture",
@@ -147,4 +155,3 @@ def run_validation(
         for row in report
     )
     return report, critical_failed
-
