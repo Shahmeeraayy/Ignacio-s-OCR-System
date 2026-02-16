@@ -141,31 +141,6 @@ def _parse_sales_discount(
     return round(value, 6)
 
 
-def _parse_net_total(item: dict[str, Any]) -> float | None:
-    value = item.get("net_total_value")
-    if value is not None:
-        try:
-            return float(value)
-        except (TypeError, ValueError):
-            return None
-    return parse_currency_value(item.get("net_total_raw"))
-
-
-def _should_skip_template_item(
-    item: dict[str, Any],
-    sales_price: float | None,
-    net_total: float | None,
-) -> bool:
-    # Exclude non-billable/included lines from template output.
-    included_text = str(item.get("net_unit_price_raw") or "").strip().lower()
-    if included_text == "included":
-        return True
-    if net_total is not None and abs(net_total) <= 1e-9:
-        if sales_price is None or abs(sales_price) <= 1e-9:
-            return True
-    return False
-
-
 def _build_template_rows(
     files_payload: list[dict[str, Any]],
     euro_rate: float,
@@ -192,9 +167,6 @@ def _build_template_rows(
             sales_price = item.get("list_unit_price_value")
             if sales_price is None:
                 sales_price = parse_currency_value(item.get("list_unit_price_raw"))
-            net_total = _parse_net_total(item)
-            if _should_skip_template_item(item=item, sales_price=sales_price, net_total=net_total):
-                continue
             sales_discount = _parse_sales_discount(
                 sales_price=sales_price,
                 purchase_price=purchase_price,
