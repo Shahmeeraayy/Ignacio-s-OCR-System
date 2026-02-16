@@ -4,6 +4,7 @@ import shutil
 from openpyxl import load_workbook
 
 from pdf_quote_extractor.pipeline import run_pipeline
+from pdf_quote_extractor.template_fill import _build_template_rows
 
 
 def test_template_fill_for_quote_fixture(tmp_path):
@@ -235,3 +236,42 @@ def test_template_autodetects_header_row_and_data_start(tmp_path):
     assert ws_out["N3"].value == 0.844872
     assert ws_out["N3"].number_format == "0.00%"
     assert ws_out["P3"].number_format == "0.00%"
+
+
+def test_template_rows_include_included_zero_value_items():
+    files_payload = [
+        {
+            "metadata": {"creation_date": "D:20260101000000Z"},
+            "business_summary": {"quote_number": "Q-TEST", "expiration_date": "01/31/2026"},
+            "line_items_parsed": [
+                {
+                    "sku": "SKU-A",
+                    "units_qty": "1",
+                    "term_start": "01/01/2026",
+                    "term_end": "01/31/2026",
+                    "list_unit_price_value": 100.0,
+                    "discount_pct_value": 0.0,
+                    "net_unit_price_value": 100.0,
+                    "net_total_value": 100.0,
+                },
+                {
+                    "sku": "SKU-B",
+                    "units_qty": "1",
+                    "term_start": "01/01/2026",
+                    "term_end": "01/31/2026",
+                    "list_unit_price_raw": "USD 0.00",
+                    "discount_pct_raw": "0.00",
+                    "net_unit_price_raw": "Included",
+                    "net_total_raw": "USD 0.00",
+                },
+            ],
+        }
+    ]
+
+    rows = _build_template_rows(files_payload=files_payload, euro_rate=1.17, margin_percent=20.0)
+
+    assert len(rows) == 2
+    assert rows[0]["Item"] == "SKU-A"
+    assert rows[1]["Item"] == "SKU-B"
+    assert rows[1]["Salesprice"] == 0.0
+    assert rows[1]["Salesdiscount"] is None
