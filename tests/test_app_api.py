@@ -61,7 +61,7 @@ def test_extract_template_return_file():
     assert len(response.data) > 1000
 
 
-def test_extract_template_with_multiple_pdfs_deduplicates_identical_files():
+def test_extract_template_with_multiple_identical_pdfs_keeps_all_by_default():
     client = app.test_client()
     project_root = Path(__file__).resolve().parents[1]
     pdf_path = project_root / "tests" / "fixtures" / "Q-220053-20251224-0752  (1).pdf"
@@ -84,8 +84,38 @@ def test_extract_template_with_multiple_pdfs_deduplicates_identical_files():
     assert response.status_code == 200
     body = response.get_json()
     assert body["ok"] is True
+    assert body["payload"]["file_count"] == 2
+    assert body["payload"]["template_output"]["rows_written"] == 8
+    assert body["payload"]["upload_summary"]["duplicates_skipped"] == 0
+
+
+def test_extract_template_with_multiple_pdfs_deduplicates_when_enabled():
+    client = app.test_client()
+    project_root = Path(__file__).resolve().parents[1]
+    pdf_path = project_root / "tests" / "fixtures" / "Q-220053-20251224-0752  (1).pdf"
+    template_path = project_root / "tests" / "fixtures" / "Example with calculations.xlsx"
+
+    payload = MultiDict(
+        [
+            ("pdf", (io.BytesIO(pdf_path.read_bytes()), "quote_1.pdf")),
+            ("pdf", (io.BytesIO(pdf_path.read_bytes()), "quote_2.pdf")),
+            ("template", (io.BytesIO(template_path.read_bytes()), "template.xlsx")),
+            ("strict", "true"),
+            ("template_only", "true"),
+            ("ocr_mode", "off"),
+            ("euro_rate", "1.17"),
+            ("margin_percent", "10"),
+            ("return_json", "true"),
+            ("dedupe", "true"),
+        ]
+    )
+    response = client.post("/extract-template", data=payload, content_type="multipart/form-data")
+    assert response.status_code == 200
+    body = response.get_json()
+    assert body["ok"] is True
     assert body["payload"]["file_count"] == 1
     assert body["payload"]["template_output"]["rows_written"] == 4
+    assert body["payload"]["upload_summary"]["duplicates_skipped"] == 1
 
 
 def test_extract_template_missing_euro_rate_returns_400():
