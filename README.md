@@ -84,6 +84,7 @@ curl -X POST "<YOUR_URL>/extract-template" \
 
 If you want JSON response instead of file download, add:
 - `return_json=true`
+- `dedupe=true` to skip identical duplicate PDFs in the same request (default: `false`)
 
 Send multiple PDFs in one request by repeating `pdf`:
 
@@ -99,7 +100,16 @@ curl -X POST "<YOUR_URL>/extract-template" \
   -F "margin_percent=10"
 ```
 
-Note: identical duplicate PDFs in the same request are automatically skipped.
+By default, all uploaded files are processed, even if two files are identical.
+To enable duplicate skipping, send:
+- `dedupe=true`
+
+File-download responses include summary headers:
+- `X-Uploaded-Files`
+- `X-Processed-Files`
+- `X-Duplicates-Skipped`
+- `X-Dedupe-Enabled`
+- `X-Rows-Written`
 
 ## Windows OCR Prerequisites (Optional)
 

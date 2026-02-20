@@ -168,6 +168,7 @@ def extract_template() -> Response:
     strict = _bool_from_str(request.form.get("strict"), default=True)
     template_only = _bool_from_str(request.form.get("template_only"), default=True)
     return_json = _bool_from_str(request.form.get("return_json"), default=False)
+    dedupe_uploads = _bool_from_str(request.form.get("dedupe"), default=False)
     euro_rate, euro_rate_error = _parse_required_float(request.form.get("euro_rate"), "euro_rate")
     if euro_rate_error:
         return jsonify({"ok": False, "error": euro_rate_error}), 400
@@ -189,21 +190,37 @@ def extract_template() -> Response:
         temp_dir = Path(tmpdir)
         seen_digests: set[str] = set()
         saved_pdf_count = 0
+        duplicates_skipped = 0
         for index, uploaded_pdf in enumerate(uploaded_pdfs, start=1):
             pdf_name = secure_filename(uploaded_pdf.filename) or f"input_{index}.pdf"
             if not pdf_name.lower().endswith(".pdf"):
                 pdf_name = f"{pdf_name}.pdf"
             pdf_path = temp_dir / f"{index:03d}_{pdf_name}"
             uploaded_pdf.save(pdf_path)
-            digest = hashlib.sha256(pdf_path.read_bytes()).hexdigest()
-            if digest in seen_digests:
-                pdf_path.unlink(missing_ok=True)
-                continue
-            seen_digests.add(digest)
+            if dedupe_uploads:
+                digest = hashlib.sha256(pdf_path.read_bytes()).hexdigest()
+                if digest in seen_digests:
+                    duplicates_skipped += 1
+                    pdf_path.unlink(missing_ok=True)
+                    continue
+                seen_digests.add(digest)
             saved_pdf_count += 1
 
         if saved_pdf_count == 0:
-            return jsonify({"ok": False, "error": "All uploaded PDFs were duplicates."}), 400
+            if dedupe_uploads and duplicates_skipped > 0:
+                return (
+                    jsonify(
+                        {
+                            "ok": False,
+                            "error": (
+                                "All uploaded PDFs were duplicates with dedupe enabled. "
+                                "Set dedupe=false to process all uploads."
+                            ),
+                        }
+                    ),
+                    400,
+                )
+            return jsonify({"ok": False, "error": "No valid PDFs were processed."}), 400
 
         if uploaded_template is not None and uploaded_template.filename:
             template_name = secure_filename(uploaded_template.filename) or "template.xlsx"
@@ -240,6 +257,13 @@ def extract_template() -> Response:
         except Exception as exc:
             return jsonify({"ok": False, "error": f"Extraction failed: {exc}"}), 500
 
+        payload["upload_summary"] = {
+            "uploaded_files": len(uploaded_pdfs),
+            "processed_files": saved_pdf_count,
+            "duplicates_skipped": duplicates_skipped,
+            "dedupe_enabled": dedupe_uploads,
+        }
+
         if strict and exit_code != 0:
             return jsonify({"ok": False, "error": "Strict validation failed.", "payload": payload}), 422
 
@@ -253,7 +277,11 @@ def extract_template() -> Response:
         )
         response.headers["Content-Disposition"] = 'attachment; filename="filled_template.xlsx"'
         template_summary: dict[str, Any] = payload.get("template_output", {}) if isinstance(payload, dict) else {}
+        upload_summary: dict[str, Any] = payload.get("upload_summary", {}) if isinstance(payload, dict) else {}
         response.headers["X-Processed-Files"] = str(payload.get("file_count", 0))
+        response.headers["X-Uploaded-Files"] = str(upload_summary.get("uploaded_files", 0))
+        response.headers["X-Duplicates-Skipped"] = str(upload_summary.get("duplicates_skipped", 0))
+        response.headers["X-Dedupe-Enabled"] = str(upload_summary.get("dedupe_enabled", False)).lower()
         response.headers["X-Rows-Written"] = str(template_summary.get("rows_written", 0))
         return response
 
