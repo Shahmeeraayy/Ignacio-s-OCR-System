@@ -14,6 +14,10 @@ DEFAULT_TEMPLATE_SHEET = "QuoteExportResults"
 DEFAULT_TEMPLATE_HEADER_ROW = 4
 DEFAULT_TEMPLATE_DATA_START_ROW = 5
 
+DEFAULT_BUSINESS_UNIT = "Spain"
+DEFAULT_CURRENCY = "EUR"
+DEFAULT_LOCATION = "EXN Spain : ES Sales Stock"
+
 TARGET_HEADERS = [
     "Date",
     "Expires",
@@ -42,15 +46,18 @@ HEADER_NUMBER_FORMATS: dict[str, str] = {
 }
 
 HEADER_ALIASES: dict[str, set[str]] = {
+    "Currency": {"currency"},
     "Date": {"date"},
     "Expires": {"expires"},
     "ExpectedClose": {"expectedclose"},
+    "BusinessUnit": {"businessunit", "business unit"},
     "Item": {"item"},
     "Quantity": {"quantity", "qty"},
     "Salesprice": {"salesprice", "sales_price", "sales price"},
     "Salesdiscount": {"salesdiscount", "sales_discount", "sales discount"},
     "Purchaseprice": {"purchaseprice", "purchase_price", "purchase price"},
     "PurchaseDiscount": {"purchasediscount", "purchase_discount", "purchase discount"},
+    "Location": {"location"},
     "ContractStart": {"contractstart", "contract_start", "contract start"},
     "ContractEnd": {"contractend", "contract_end", "contract end"},
     "Serial#Supported": {"serialsupported", "serial", "serialnumbersupported"},
@@ -58,6 +65,7 @@ HEADER_ALIASES: dict[str, set[str]] = {
     "Opportunity": {"opportunity"},
     "Memo (Line)": {"memoline", "memo"},
     "Quote ID (Line)": {"quoteidline", "quoteid", "quote id"},
+    "SalesCurrency": {"salescurrency", "sales currency"},
 }
 
 NORMALIZED_HEADER_ALIASES: dict[str, set[str]] = {
@@ -76,7 +84,7 @@ def _parse_creation_date(raw: str | None) -> str | None:
         year = int(match.group(1))
         month = int(match.group(2))
         day = int(match.group(3))
-        return datetime(year, month, day).strftime("%m/%d/%Y")
+        return datetime(year, month, day).strftime("%d/%m/%Y")
     except ValueError:
         return None
 
@@ -86,6 +94,28 @@ def _clean_single_line(text: str | None) -> str | None:
         return None
     cleaned = " ".join(str(text).replace("\n", " ").split())
     return cleaned or None
+
+
+def _clean_sku(text: str | None) -> str | None:
+    single_line = _clean_single_line(text)
+    if single_line is None:
+        return None
+    cleaned = re.sub(r"\s+", "", single_line)
+    return cleaned or None
+
+
+def _format_date_for_template(raw: str | None) -> str | None:
+    if not raw:
+        return None
+    text = str(raw).strip()
+    if not text:
+        return None
+    for fmt in ("%m/%d/%Y", "%m/%d/%y", "%Y-%m-%d"):
+        try:
+            return datetime.strptime(text, fmt).strftime("%d/%m/%Y")
+        except ValueError:
+            continue
+    return text
 
 
 def _normalize_header(text: str) -> str:
@@ -153,7 +183,7 @@ def _build_template_rows(
         line_items = file_payload.get("line_items_parsed", [])
 
         quote_id = summary.get("quote_number")
-        expiration_date = summary.get("expiration_date")
+        expiration_date = _format_date_for_template(summary.get("expiration_date"))
         creation_date = _parse_creation_date(metadata.get("creation_date"))
 
         for item in line_items:
@@ -175,22 +205,26 @@ def _build_template_rows(
             )
 
             row = {
+                "Currency": DEFAULT_CURRENCY,
                 "Date": creation_date,
                 "Expires": expiration_date,
                 "ExpectedClose": expiration_date,
-                "Item": _clean_single_line(item.get("sku")),
+                "BusinessUnit": DEFAULT_BUSINESS_UNIT,
+                "Item": _clean_sku(item.get("sku")),
                 "Quantity": _parse_quantity(item.get("units_qty")),
                 "Salesprice": sales_price,
                 "Salesdiscount": sales_discount,
                 "Purchaseprice": purchase_price,
                 "PurchaseDiscount": discount_fraction,
-                "ContractStart": item.get("term_start"),
-                "ContractEnd": item.get("term_end"),
+                "Location": DEFAULT_LOCATION,
+                "ContractStart": _format_date_for_template(item.get("term_start")),
+                "ContractEnd": _format_date_for_template(item.get("term_end")),
                 "Serial#Supported": None,
                 "Rebate": None,
-                "Opportunity": quote_id,
+                "Opportunity": None,
                 "Memo (Line)": None,
                 "Quote ID (Line)": quote_id,
+                "SalesCurrency": DEFAULT_CURRENCY,
             }
             rows.append(row)
     return rows
