@@ -42,10 +42,12 @@ def test_template_fill_for_quote_fixture(tmp_path):
     ws = wb["QuoteExportResults"]
 
     # Row 5: first parsed line item.
-    assert ws["D5"].value == "12/24/2025"
-    assert ws["G5"].value == "12/30/2025"
-    assert ws["H5"].value == "12/30/2025"
-    assert ws["K5"].value == "NK-EGRESS- DIP"
+    assert ws["C5"].value == "EUR"
+    assert ws["D5"].value == "24/12/2025"
+    assert ws["G5"].value == "30/12/2025"
+    assert ws["H5"].value == "30/12/2025"
+    assert ws["J5"].value == "Spain"
+    assert ws["K5"].value == "NK-EGRESS-DIP"
     assert ws["L5"].value == 10000
     assert ws["M5"].value == 60
     assert ws["N5"].value == 0.844872
@@ -53,11 +55,13 @@ def test_template_fill_for_quote_fixture(tmp_path):
     assert ws["P5"].value == 0.835
     assert ws["N5"].number_format == "0.00%"
     assert ws["P5"].number_format == "0.00%"
-    assert ws["R5"].value == "12/31/2025"
-    assert ws["S5"].value == "12/30/2028"
-    assert ws["V5"].value == "Q-220053-2"
+    assert ws["Q5"].value == "EXN Spain : ES Sales Stock"
+    assert ws["R5"].value == "31/12/2025"
+    assert ws["S5"].value == "30/12/2028"
+    assert ws["V5"].value in (None, "")
     assert ws["W5"].value in (None, "")
     assert ws["X5"].value == "Q-220053-2"
+    assert ws["Y5"].value == "EUR"
 
     # Row 6: second parsed line item.
     assert ws["L6"].value == 1
@@ -68,6 +72,7 @@ def test_template_fill_for_quote_fixture(tmp_path):
     assert ws["N6"].number_format == "0.00%"
     assert ws["P6"].number_format == "0.00%"
     assert ws["K6"].value == "NK-SSLI"
+    assert ws["V6"].value in (None, "")
     assert ws["W6"].value in (None, "")
 
 
@@ -236,6 +241,8 @@ def test_template_autodetects_header_row_and_data_start(tmp_path):
     assert ws_out["N3"].value == 0.844872
     assert ws_out["N3"].number_format == "0.00%"
     assert ws_out["P3"].number_format == "0.00%"
+    assert ws_out["D3"].value == "24/12/2025"
+    assert ws_out["V3"].value in (None, "")
 
 
 def test_template_rows_include_included_zero_value_items():
@@ -275,3 +282,14 @@ def test_template_rows_include_included_zero_value_items():
     assert rows[1]["Item"] == "SKU-B"
     assert rows[1]["Salesprice"] == 0.0
     assert rows[1]["Salesdiscount"] is None
+    assert rows[0]["Date"] == "01/01/2026"
+    assert rows[0]["Expires"] == "31/01/2026"
+    assert rows[0]["ExpectedClose"] == "31/01/2026"
+    assert rows[0]["ContractStart"] == "01/01/2026"
+    assert rows[0]["ContractEnd"] == "31/01/2026"
+    assert rows[0]["BusinessUnit"] == "Spain"
+    assert rows[0]["Currency"] == "EUR"
+    assert rows[0]["Location"] == "EXN Spain : ES Sales Stock"
+    assert rows[0]["SalesCurrency"] == "EUR"
+    assert rows[0]["Opportunity"] is None
+    assert rows[0]["Quote ID (Line)"] == "Q-TEST"
