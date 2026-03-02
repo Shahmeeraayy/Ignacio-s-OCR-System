@@ -3,6 +3,7 @@ from __future__ import annotations
 import mimetypes
 import os
 import hashlib
+import re
 import tempfile
 from pathlib import Path
 from typing import Any
@@ -10,6 +11,7 @@ from typing import Any
 from flask import Flask, Response, jsonify, request
 from werkzeug.utils import secure_filename
 
+from pdf_quote_extractor.normalize import parse_number_value
 from pdf_quote_extractor.pipeline import run_pipeline
 
 
@@ -27,9 +29,8 @@ def _bool_from_str(value: str | None, default: bool) -> bool:
 def _parse_required_float(value: str | None, field_name: str) -> tuple[float | None, str | None]:
     if value is None or not value.strip():
         return None, f"Missing required field: {field_name}"
-    try:
-        parsed = float(value)
-    except ValueError:
+    parsed = parse_number_value(value, allow_thousands=True)
+    if parsed is None:
         return None, f"Invalid numeric value for {field_name}"
     return parsed, None
 
@@ -81,6 +82,85 @@ def _config_path() -> Path:
     return Path("config.yaml")
 
 
+def _normalize_vendor_key(raw: str | None) -> str:
+    if raw is None:
+        return ""
+    normalized = re.sub(r"[^a-z0-9]+", "_", raw.strip().lower()).strip("_")
+    return normalized
+
+
+def _default_vendor() -> str:
+    configured = _normalize_vendor_key(os.getenv("DEFAULT_VENDOR"))
+    return configured or "netskope"
+
+
+def _vendor_config_dir() -> Path:
+    configured = os.getenv("VENDOR_CONFIG_DIR")
+    if configured:
+        return Path(configured)
+    return Path("config") / "vendors"
+
+
+def _resolve_config_path(vendor_raw: str | None) -> tuple[str, Path]:
+    default_vendor = _default_vendor()
+    requested_vendor = _normalize_vendor_key(vendor_raw) or default_vendor
+
+    env_override = os.getenv(f"CONFIG_PATH_{requested_vendor.upper()}")
+    if env_override:
+        return requested_vendor, Path(env_override)
+
+    vendor_dir = _vendor_config_dir()
+    for extension in ("yaml", "yml"):
+        candidate = vendor_dir / f"{requested_vendor}.{extension}"
+        if candidate.exists():
+            return requested_vendor, candidate
+
+    if requested_vendor == default_vendor:
+        return requested_vendor, _config_path()
+
+    raise ValueError(
+        f"Unsupported vendor: {requested_vendor}. Add a config at "
+        f"{vendor_dir / f'{requested_vendor}.yaml'} or set CONFIG_PATH_{requested_vendor.upper()}."
+    )
+
+
+def _discover_vendors() -> list[str]:
+    default_vendor = _default_vendor()
+    vendors: list[str] = [default_vendor]
+    seen = {default_vendor}
+
+    configured = os.getenv("AVAILABLE_VENDORS", "")
+    for entry in configured.split(","):
+        vendor = _normalize_vendor_key(entry)
+        if vendor and vendor not in seen:
+            seen.add(vendor)
+            vendors.append(vendor)
+
+    for env_key in os.environ:
+        if not env_key.startswith("CONFIG_PATH_"):
+            continue
+        vendor = _normalize_vendor_key(env_key.replace("CONFIG_PATH_", "", 1))
+        if vendor and vendor not in seen:
+            seen.add(vendor)
+            vendors.append(vendor)
+
+    vendor_dir = _vendor_config_dir()
+    if vendor_dir.exists():
+        for candidate in sorted(vendor_dir.glob("*.y*ml")):
+            vendor = _normalize_vendor_key(candidate.stem)
+            if vendor and vendor not in seen:
+                seen.add(vendor)
+                vendors.append(vendor)
+    return vendors
+
+
+def _vendor_label(vendor: str) -> str:
+    words = [word for word in vendor.replace("_", " ").split() if word]
+    if not words:
+        return "Vendor"
+    return " ".join(word.capitalize() for word in words)
+
+
 def _cors_origin() -> str:
     return os.getenv("CORS_ALLOW_ORIGIN", "*")
 
@@ -108,7 +188,7 @@ def root() -> Response:
             "ok": True,
             "service": "pdf-template-extractor",
             "version": "1.0",
-            "endpoints": ["/health", "/extract-template"],
+            "endpoints": ["/health", "/vendors", "/extract-template"],
             "default_ocr_mode": "off",
         }
     )
@@ -121,7 +201,7 @@ def api_root() -> Response:
             "ok": True,
             "service": "pdf-template-extractor",
             "version": "1.0",
-            "endpoints": ["/health", "/extract-template"],
+            "endpoints": ["/health", "/vendors", "/extract-template"],
             "default_ocr_mode": "off",
         }
     )
@@ -131,6 +211,20 @@ def api_root() -> Response:
 @app.route("/api/health", methods=["GET"])
 def health() -> Response:
     return jsonify({"ok": True})
+
+
+@app.route("/vendors", methods=["GET"])
+@app.route("/api/vendors", methods=["GET"])
+def vendors() -> Response:
+    available = _discover_vendors()
+    default_vendor = _default_vendor()
+    return jsonify(
+        {
+            "ok": True,
+            "default_vendor": default_vendor,
+            "vendors": [{"id": vendor, "label": _vendor_label(vendor)} for vendor in available],
+        }
+    )
 
 
 @app.route("/extract-template", methods=["POST", "OPTIONS"])
@@ -182,7 +276,11 @@ def extract_template() -> Response:
     if margin_error:
         return jsonify({"ok": False, "error": margin_error}), 400
 
-    config_path = _config_path()
+    vendor_raw = request.form.get("vendor")
+    try:
+        selected_vendor, config_path = _resolve_config_path(vendor_raw)
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
     if not config_path.exists():
         return jsonify({"ok": False, "error": f"Config file not found: {config_path}"}), 500
 
@@ -263,6 +361,7 @@ def extract_template() -> Response:
             "duplicates_skipped": duplicates_skipped,
             "dedupe_enabled": dedupe_uploads,
         }
+        payload["vendor"] = selected_vendor
 
         if strict and exit_code != 0:
             return jsonify({"ok": False, "error": "Strict validation failed.", "payload": payload}), 422
@@ -283,6 +382,7 @@ def extract_template() -> Response:
         response.headers["X-Duplicates-Skipped"] = str(upload_summary.get("duplicates_skipped", 0))
         response.headers["X-Dedupe-Enabled"] = str(upload_summary.get("dedupe_enabled", False)).lower()
         response.headers["X-Rows-Written"] = str(template_summary.get("rows_written", 0))
+        response.headers["X-Vendor"] = selected_vendor
         return response
 
 

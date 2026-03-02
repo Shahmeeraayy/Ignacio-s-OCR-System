@@ -17,6 +17,17 @@ interface PricingInputs {
   marginPercent: string;
 }
 
+interface VendorOption {
+  id: string;
+  label: string;
+}
+
+interface VendorsResponse {
+  ok?: boolean;
+  default_vendor?: string;
+  vendors?: VendorOption[];
+}
+
 const App: React.FC = () => {
   const [files, setFiles] = useState<FileItem[]>([]);
   const [isServerHealthy, setIsServerHealthy] = useState<boolean>(true);
@@ -24,6 +35,8 @@ const App: React.FC = () => {
   const [isDragOver, setIsDragOver] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [pricing, setPricing] = useState<PricingInputs>({ euroRate: '', marginPercent: '' });
+  const [vendors, setVendors] = useState<VendorOption[]>([{ id: 'netskope', label: 'Netskope' }]);
+  const [selectedVendor, setSelectedVendor] = useState<string>('netskope');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isVisible, setIsVisible] = useState(false);
 
@@ -31,6 +44,7 @@ const App: React.FC = () => {
   useEffect(() => {
     setTimeout(() => setIsVisible(true), 100);
     checkServerHealth();
+    loadVendors();
   }, []);
 
   const checkServerHealth = async () => {
@@ -40,6 +54,58 @@ const App: React.FC = () => {
     } catch (error) {
       setIsServerHealthy(false);
     }
+  };
+
+  const loadVendors = async () => {
+    try {
+      const response = await fetch('/api/vendors');
+      if (!response.ok) {
+        return;
+      }
+      const payload = (await response.json()) as VendorsResponse;
+      const availableVendors = Array.isArray(payload.vendors) ? payload.vendors : [];
+      if (payload.ok && availableVendors.length > 0) {
+        setVendors(availableVendors);
+        const hasDefaultVendor = availableVendors.some(
+          (vendor) => vendor.id === payload.default_vendor
+        );
+        setSelectedVendor(
+          hasDefaultVendor && payload.default_vendor
+            ? payload.default_vendor
+            : availableVendors[0].id
+        );
+      }
+    } catch (error) {
+      // Keep local fallback vendor list when the endpoint is unavailable.
+    }
+  };
+
+  const parseLocalizedNumber = (raw: string): number => {
+    const compact = raw.trim().replace(/\s+/g, '');
+    if (!compact) {
+      return Number.NaN;
+    }
+
+    const hasComma = compact.includes(',');
+    const hasDot = compact.includes('.');
+    if (hasComma && hasDot) {
+      if (compact.lastIndexOf(',') > compact.lastIndexOf('.')) {
+        return Number(compact.replace(/\./g, '').replace(',', '.'));
+      }
+      return Number(compact.replace(/,/g, ''));
+    }
+    if (hasComma) {
+      const parts = compact.split(',');
+      if (parts.length > 2) {
+        return Number(parts.join(''));
+      }
+      const [head, tail] = parts;
+      if (head && tail && tail.length === 3 && head.length <= 3 && !head.startsWith('0')) {
+        return Number(`${head}${tail}`);
+      }
+      return Number(compact.replace(',', '.'));
+    }
+    return Number(compact);
   };
 
   const formatFileSize = (bytes: number): string => {
@@ -132,19 +198,19 @@ const App: React.FC = () => {
       });
       return;
     }
-    const parsedEuroRate = Number(pricing.euroRate);
-    const parsedMarginPercent = Number(pricing.marginPercent);
+    const parsedEuroRate = parseLocalizedNumber(pricing.euroRate);
+    const parsedMarginPercent = parseLocalizedNumber(pricing.marginPercent);
     if (!Number.isFinite(parsedEuroRate) || parsedEuroRate <= 0) {
       setStatus({
         type: 'error',
-        message: 'Please provide a valid Euro Rate greater than 0.'
+        message: 'Please provide a valid Euro Rate greater than 0 (use . or , as decimal separator).'
       });
       return;
     }
     if (!Number.isFinite(parsedMarginPercent)) {
       setStatus({
         type: 'error',
-        message: 'Please provide a valid Margin (%).'
+        message: 'Please provide a valid Margin (%) using . or , as decimal separator.'
       });
       return;
     }
@@ -162,6 +228,7 @@ const App: React.FC = () => {
       formData.append('ocr_mode', 'off');
       formData.append('euro_rate', String(parsedEuroRate));
       formData.append('margin_percent', String(parsedMarginPercent));
+      formData.append('vendor', selectedVendor);
 
       const response = await fetch('/api/extract-template', {
         method: 'POST',
@@ -297,16 +364,33 @@ const App: React.FC = () => {
             </div>
           </div>
 
-          {/* Pricing Inputs */}
-          <div className="mb-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* Extraction Inputs */}
+          <div className="mb-6 grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+              <label className="block text-sm font-semibold text-gray-300 mb-2">
+                Vendor
+              </label>
+              <select
+                value={selectedVendor}
+                onChange={(event) => setSelectedVendor(event.target.value)}
+                disabled={!isServerHealthy || isProcessing}
+                className="w-full rounded-xl bg-gray-900/50 border border-gray-700 text-gray-100 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent"
+              >
+                {vendors.map((vendor) => (
+                  <option key={vendor.id} value={vendor.id} className="bg-gray-900 text-gray-100">
+                    {vendor.label}
+                  </option>
+                ))}
+              </select>
+            </div>
             <div>
               <label className="block text-sm font-semibold text-gray-300 mb-2">
                 Euro Rate
               </label>
               <input
-                type="number"
-                step="0.0001"
-                min="0"
+                type="text"
+                inputMode="decimal"
+                placeholder="e.g. 1.17 or 1,17"
                 value={pricing.euroRate}
                 onChange={(event) =>
                   setPricing((prev) => ({ ...prev, euroRate: event.target.value }))
@@ -320,8 +404,9 @@ const App: React.FC = () => {
                 Margin (%)
               </label>
               <input
-                type="number"
-                step="0.01"
+                type="text"
+                inputMode="decimal"
+                placeholder="e.g. 10 or 10,5"
                 value={pricing.marginPercent}
                 onChange={(event) =>
                   setPricing((prev) => ({ ...prev, marginPercent: event.target.value }))

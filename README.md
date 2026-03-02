@@ -44,8 +44,9 @@ This project is ready for Vercel with `app.py` as the Python entrypoint.
 
 - API endpoints:
   - `GET /health`
+  - `GET /vendors`
   - `POST /extract-template`
-- API aliases (also supported): `GET /api/health`, `POST /api/extract-template`
+- API aliases (also supported): `GET /api/health`, `GET /api/vendors`, `POST /api/extract-template`
 - Serverless-safe behavior:
   - Uses temporary files only
   - No persistent local state required
@@ -66,6 +67,9 @@ Vercel config already runs frontend build during deploy:
 - `CONFIG_PATH`: alternate config file path (default: `config.yaml`)
 - `EXTRACTOR_MAX_CONTENT_MB`: upload limit in MB (default: `20`)
 - `CORS_ALLOW_ORIGIN`: CORS origin (default: `*`)
+- `DEFAULT_VENDOR`: default vendor id used when no `vendor` form field is sent (default: `netskope`)
+- `VENDOR_CONFIG_DIR`: directory containing per-vendor YAML configs (default: `config/vendors`)
+- `CONFIG_PATH_<VENDOR_ID>`: override config path for a vendor, for example `CONFIG_PATH_NETSKOPE`
 
 ### API Usage Example
 
@@ -78,6 +82,7 @@ curl -X POST "<YOUR_URL>/extract-template" \
   -F "strict=true" \
   -F "template_only=true" \
   -F "ocr_mode=off" \
+  -F "vendor=netskope" \
   -F "euro_rate=1.17" \
   -F "margin_percent=10"
 ```
@@ -85,6 +90,7 @@ curl -X POST "<YOUR_URL>/extract-template" \
 If you want JSON response instead of file download, add:
 - `return_json=true`
 - `dedupe=true` to skip identical duplicate PDFs in the same request (default: `false`)
+- `euro_rate` and `margin_percent` accept either `.` or `,` as decimal separator (for example `1.17` or `1,17`)
 
 Send multiple PDFs in one request by repeating `pdf`:
 
@@ -96,6 +102,7 @@ curl -X POST "<YOUR_URL>/extract-template" \
   -F "strict=true" \
   -F "template_only=true" \
   -F "ocr_mode=off" \
+  -F "vendor=netskope" \
   -F "euro_rate=1.17" \
   -F "margin_percent=10"
 ```

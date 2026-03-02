@@ -3,7 +3,13 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from .normalize import parse_currency_code, parse_currency_value, parse_date_value, split_term_range
+from .normalize import (
+    parse_currency_code,
+    parse_currency_value,
+    parse_date_value,
+    parse_number_value,
+    split_term_range,
+)
 
 
 LINE_ITEM_HEADER_PATTERNS: dict[str, tuple[str, ...]] = {
@@ -235,13 +241,7 @@ def _reindex_items(line_items: list[dict[str, Any]]) -> list[dict[str, Any]]:
 def _parse_percent(raw: str | None) -> float | None:
     if not raw:
         return None
-    match = re.search(r"[-+]?[0-9]+(?:\.[0-9]+)?", raw)
-    if not match:
-        return None
-    try:
-        return float(match.group(0))
-    except ValueError:
-        return None
+    return parse_number_value(raw, allow_thousands=False)
 
 
 def _extract_director_fields(
