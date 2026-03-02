@@ -5,6 +5,7 @@ import sys
 from pathlib import Path
 
 from pdf_quote_extractor import run_pipeline
+from pdf_quote_extractor.normalize import parse_number_value
 
 
 def _default_json_output(output_path: Path) -> Path:
@@ -106,13 +107,13 @@ def main() -> int:
     )
     parser.add_argument(
         "--euro-rate",
-        type=float,
+        type=str,
         default=None,
         help="Euro exchange rate used in Salesdiscount formula (required when template output is enabled).",
     )
     parser.add_argument(
         "--margin-percent",
-        type=float,
+        type=str,
         default=None,
         help="Margin percent used in Salesdiscount formula (e.g. 10 for 10%%). Required when template output is enabled.",
     )
@@ -133,14 +134,34 @@ def main() -> int:
     include_char_layer = bool(args.char_layer and not args.no_char_layer)
     include_tables = not args.no_tables
     write_audit_workbook = not args.template_only
+    parsed_euro_rate = (
+        parse_number_value(args.euro_rate, allow_thousands=True) if args.euro_rate is not None else None
+    )
+    parsed_margin_percent = (
+        parse_number_value(args.margin_percent, allow_thousands=True)
+        if args.margin_percent is not None
+        else None
+    )
+    if args.euro_rate is not None and parsed_euro_rate is None:
+        print(
+            "Failed: --euro-rate must be numeric and may use . or , as decimal separator.",
+            file=sys.stderr,
+        )
+        return 1
+    if args.margin_percent is not None and parsed_margin_percent is None:
+        print(
+            "Failed: --margin-percent must be numeric and may use . or , as decimal separator.",
+            file=sys.stderr,
+        )
+        return 1
     if template_path and template_output_path:
-        if args.euro_rate is None or args.euro_rate <= 0:
+        if parsed_euro_rate is None or parsed_euro_rate <= 0:
             print(
                 "Failed: --euro-rate is required and must be > 0 when template output is enabled.",
                 file=sys.stderr,
             )
             return 1
-        if args.margin_percent is None:
+        if parsed_margin_percent is None:
             print(
                 "Failed: --margin-percent is required when template output is enabled.",
                 file=sys.stderr,
@@ -161,8 +182,8 @@ def main() -> int:
             poppler_path=args.poppler_path,
             template_path=template_path,
             template_output_path=template_output_path,
-            euro_rate=args.euro_rate,
-            margin_percent=args.margin_percent,
+            euro_rate=parsed_euro_rate,
+            margin_percent=parsed_margin_percent,
             template_sheet=args.template_sheet,
             template_header_row=args.template_header_row,
             template_data_start_row=args.template_data_start_row,

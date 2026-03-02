@@ -110,3 +110,44 @@ def test_parse_line_items_with_reordered_columns():
     assert items[0]["net_unit_price_value"] == 90.0
     assert items[0]["net_total_value"] == 900.0
     assert "extra description line" in (items[0]["description_continuation"] or "").lower()
+
+
+def test_parse_line_items_with_comma_decimal_values():
+    tables_structured = [
+        {
+            "file": "sample.pdf",
+            "page": 1,
+            "table_index": 1,
+            "rows": [
+                [
+                    "Service/Product Name",
+                    "Service/Product\nCode/SKU",
+                    "Subscription\nUnits/\nQuantity",
+                    "Term",
+                    "List Unit Price",
+                    "Discount\n(%)",
+                    "Net Unit Price",
+                    "Net Total",
+                ],
+                [
+                    "Secure Product",
+                    "SKU-COMMA-1",
+                    "10",
+                    "12/31/2025 - 12/30/2026",
+                    "EUR 100,50",
+                    "10,25",
+                    "EUR 90,20",
+                    "EUR 902,00",
+                ],
+            ],
+        }
+    ]
+    rules = {"header_contains": ["Service/Product Name", "Code/SKU"], "min_columns": 8}
+
+    items = parse_line_items("sample.pdf", tables_structured, rules)
+
+    assert len(items) == 1
+    assert items[0]["list_unit_price_value"] == 100.5
+    assert items[0]["discount_pct_value"] == 10.25
+    assert items[0]["net_unit_price_value"] == 90.2
+    assert items[0]["net_total_value"] == 902.0

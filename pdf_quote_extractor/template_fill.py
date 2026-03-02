@@ -7,7 +7,7 @@ from typing import Any
 
 from openpyxl import load_workbook
 
-from .normalize import parse_currency_value
+from .normalize import parse_currency_value, parse_number_value
 
 
 DEFAULT_TEMPLATE_SHEET = "QuoteExportResults"
@@ -125,13 +125,8 @@ def _normalize_header(text: str) -> str:
 def _parse_quantity(raw: str | None) -> float | int | None:
     if not raw:
         return None
-    match = re.search(r"([-+]?[0-9][0-9,]*(?:\.[0-9]+)?)", raw.replace("\n", " "))
-    if not match:
-        return None
-    numeric = match.group(1).replace(",", "")
-    try:
-        value = float(numeric)
-    except ValueError:
+    value = parse_number_value(raw, allow_thousands=True)
+    if value is None:
         return None
     if value.is_integer():
         return int(value)
@@ -145,12 +140,9 @@ def _parse_discount_fraction(
     if discount_pct_value is not None:
         return round(float(discount_pct_value) / 100.0, 6)
     if discount_pct_raw:
-        match = re.search(r"[-+]?[0-9]+(?:\.[0-9]+)?", discount_pct_raw)
-        if match:
-            try:
-                return round(float(match.group(0)) / 100.0, 6)
-            except ValueError:
-                return None
+        parsed = parse_number_value(discount_pct_raw, allow_thousands=False)
+        if parsed is not None:
+            return round(parsed / 100.0, 6)
     return None
 
 
