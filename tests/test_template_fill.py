@@ -51,7 +51,7 @@ def test_template_fill_for_quote_fixture(tmp_path):
     assert ws["L5"].value == 10000
     assert ws["M5"].value == 60
     assert ws["N5"].value == 0.844872
-    assert ws["O5"].value == 9.9
+    assert ws["O5"].value == 60
     assert ws["P5"].value == 0.835
     assert ws["N5"].number_format == "0.00%"
     assert ws["P5"].number_format == "0.00%"
@@ -67,7 +67,7 @@ def test_template_fill_for_quote_fixture(tmp_path):
     assert ws["L6"].value == 1
     assert ws["M6"].value == 48000
     assert ws["N6"].value == 0.50359
-    assert ws["O6"].value == 25344
+    assert ws["O6"].value == 48000
     assert ws["P6"].value == 0.472
     assert ws["N6"].number_format == "0.00%"
     assert ws["P6"].number_format == "0.00%"
@@ -282,6 +282,8 @@ def test_template_rows_include_included_zero_value_items():
     assert rows[1]["Item"] == "SKU-B"
     assert rows[1]["Salesprice"] == 0.0
     assert rows[1]["Salesdiscount"] is None
+    assert rows[0]["Purchaseprice"] == 100.0
+    assert rows[1]["Purchaseprice"] == 0.0
     assert rows[0]["Date"] == "01/01/2026"
     assert rows[0]["Expires"] == "31/01/2026"
     assert rows[0]["ExpectedClose"] == "31/01/2026"
@@ -293,3 +295,54 @@ def test_template_rows_include_included_zero_value_items():
     assert rows[0]["SalesCurrency"] == "EUR"
     assert rows[0]["Opportunity"] is None
     assert rows[0]["Quote ID (Line)"] == "Q-TEST"
+
+
+def test_template_rows_keep_margin_based_on_net_cost_when_purchaseprice_displays_list():
+    files_payload = [
+        {
+            "metadata": {"creation_date": "D:20260101000000Z"},
+            "business_summary": {"quote_number": "Q-MARGIN", "expiration_date": "01/31/2026"},
+            "line_items_parsed": [
+                {
+                    "sku": "SKU-MARGIN",
+                    "units_qty": "1",
+                    "term_start": "01/01/2026",
+                    "term_end": "01/31/2026",
+                    "list_unit_price_value": 100.0,
+                    "discount_pct_value": 10.0,
+                    "net_unit_price_value": 90.0,
+                }
+            ],
+        }
+    ]
+
+    rows = _build_template_rows(files_payload=files_payload, euro_rate=1.0, margin_percent=0.0)
+
+    assert rows[0]["Purchaseprice"] == 100.0
+    assert rows[0]["PurchaseDiscount"] == 0.1
+    assert rows[0]["Salesdiscount"] == 0.1
+
+
+def test_template_rows_can_derive_margin_from_list_and_discount_without_net_unit_price():
+    files_payload = [
+        {
+            "metadata": {"creation_date": "D:20260101000000Z"},
+            "business_summary": {"quote_number": "Q-DERIVE", "expiration_date": "01/31/2026"},
+            "line_items_parsed": [
+                {
+                    "sku": "SKU-DERIVE",
+                    "units_qty": "1",
+                    "term_start": "01/01/2026",
+                    "term_end": "01/31/2026",
+                    "list_unit_price_value": 100.0,
+                    "discount_pct_value": 10.0,
+                }
+            ],
+        }
+    ]
+
+    rows = _build_template_rows(files_payload=files_payload, euro_rate=1.0, margin_percent=0.0)
+
+    assert rows[0]["Purchaseprice"] == 100.0
+    assert rows[0]["PurchaseDiscount"] == 0.1
+    assert rows[0]["Salesdiscount"] == 0.1
