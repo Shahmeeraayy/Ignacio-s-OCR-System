@@ -7,6 +7,38 @@ from pdf_quote_extractor.pipeline import run_pipeline
 from pdf_quote_extractor.template_fill import _build_template_rows
 
 
+EXPECTED_TEMPLATE_HEADERS = [
+    "ExternalId",
+    "Title",
+    "Currency",
+    "Date",
+    "Reseller",
+    "ResellerContact",
+    "Expires",
+    "ExpectedClose",
+    "EndUser",
+    "BusinessUnit",
+    "Item",
+    "Quantity",
+    "Salesprice",
+    "Salesdiscount",
+    "Purchaseprice",
+    "PurchaseDiscount",
+    "Location",
+    "ContractStart",
+    "ContractEnd",
+    "Serial#Supported",
+    "Rebate",
+    "Opportunity",
+    "Memo (Line)",
+    "Quote ID (Line)",
+    "VendorSpecialPriceApproval",
+    "VendorSpecialPriceApproval (Line)",
+    "SalesCurrency",
+    "SalesExchangeRate",
+]
+
+
 def test_template_fill_for_quote_fixture(tmp_path):
     project_root = Path(__file__).resolve().parents[1]
     fixture_pdf = project_root / "tests" / "fixtures" / "Q-220053-20251224-0752  (1).pdf"
@@ -40,6 +72,8 @@ def test_template_fill_for_quote_fixture(tmp_path):
 
     wb = load_workbook(filled_template, data_only=False)
     ws = wb["QuoteExportResults"]
+    headers = [ws.cell(4, col).value for col in range(1, len(EXPECTED_TEMPLATE_HEADERS) + 1)]
+    assert headers == EXPECTED_TEMPLATE_HEADERS
 
     # Row 5: first parsed line item.
     assert ws["C5"].value == "EUR"
@@ -61,7 +95,10 @@ def test_template_fill_for_quote_fixture(tmp_path):
     assert ws["V5"].value in (None, "")
     assert ws["W5"].value in (None, "")
     assert ws["X5"].value == "Q-220053-2"
-    assert ws["Y5"].value == "EUR"
+    assert ws["Y5"].value in (None, "")
+    assert ws["Z5"].value in (None, "")
+    assert ws["AA5"].value == "EUR"
+    assert ws["AB5"].value in (None, "")
 
     # Row 6: second parsed line item.
     assert ws["L6"].value == 1
@@ -74,6 +111,9 @@ def test_template_fill_for_quote_fixture(tmp_path):
     assert ws["K6"].value == "NK-SSLI"
     assert ws["V6"].value in (None, "")
     assert ws["W6"].value in (None, "")
+    assert ws["Y6"].value in (None, "")
+    assert ws["Z6"].value in (None, "")
+    assert ws["AA6"].value == "EUR"
 
 
 def test_template_only_mode_skips_audit_workbook(tmp_path):
@@ -203,7 +243,7 @@ def test_template_autodetects_header_row_and_data_start(tmp_path):
 
     wb = load_workbook(template_file, data_only=False)
     ws = wb["QuoteExportResults"]
-    for col in range(1, 27):
+    for col in range(1, len(EXPECTED_TEMPLATE_HEADERS) + 1):
         ws.cell(2, col).value = ws.cell(4, col).value
         ws.cell(4, col).value = None
     wb.save(template_file)
@@ -236,6 +276,8 @@ def test_template_autodetects_header_row_and_data_start(tmp_path):
 
     wb_out = load_workbook(filled_template, data_only=False)
     ws_out = wb_out["QuoteExportResults"]
+    headers = [ws_out.cell(2, col).value for col in range(1, len(EXPECTED_TEMPLATE_HEADERS) + 1)]
+    assert headers == EXPECTED_TEMPLATE_HEADERS
     assert ws_out["K3"].value is not None
     assert ws_out["M3"].value == 60
     assert ws_out["N3"].value == 0.844872
@@ -243,6 +285,53 @@ def test_template_autodetects_header_row_and_data_start(tmp_path):
     assert ws_out["P3"].number_format == "0.00%"
     assert ws_out["D3"].value == "24/12/2025"
     assert ws_out["V3"].value in (None, "")
+    assert ws_out["X3"].value == "Q-220053-2"
+    assert ws_out["Y3"].value in (None, "")
+    assert ws_out["Z3"].value in (None, "")
+    assert ws_out["AA3"].value == "EUR"
+
+
+def test_template_fill_falls_back_to_single_sheet_when_default_name_is_missing(tmp_path):
+    project_root = Path(__file__).resolve().parents[1]
+    fixture_pdf = project_root / "tests" / "fixtures" / "Q-220053-20251224-0752  (1).pdf"
+    source_template = project_root / "tests" / "fixtures" / "Example with calculations.xlsx"
+    config_path = project_root / "config.yaml"
+
+    template_file = tmp_path / "template_single_sheet_renamed.xlsx"
+    shutil.copy2(source_template, template_file)
+
+    wb = load_workbook(template_file, data_only=False)
+    ws = wb["QuoteExportResults"]
+    ws.title = "Client Template"
+    wb.save(template_file)
+
+    output_xlsx = tmp_path / "quote_output.xlsx"
+    output_json = tmp_path / "quote_output.json"
+    filled_template = tmp_path / "quote_template_filled.xlsx"
+
+    exit_code, payload = run_pipeline(
+        input_path=fixture_pdf,
+        output_path=output_xlsx,
+        json_output_path=output_json,
+        config_path=config_path,
+        ocr_mode="off",
+        strict=True,
+        include_char_layer=False,
+        include_tables=True,
+        tesseract_cmd=None,
+        poppler_path=None,
+        template_path=template_file,
+        template_output_path=filled_template,
+        euro_rate=1.17,
+        margin_percent=10.0,
+        write_audit_workbook=False,
+    )
+
+    assert exit_code == 0
+    assert payload["template_output"]["sheet_name"] == "Client Template"
+
+    wb_out = load_workbook(filled_template, data_only=False)
+    assert "Client Template" in wb_out.sheetnames
 
 
 def test_template_rows_include_included_zero_value_items():
@@ -346,3 +435,42 @@ def test_template_rows_can_derive_margin_from_list_and_discount_without_net_unit
     assert rows[0]["Purchaseprice"] == 100.0
     assert rows[0]["PurchaseDiscount"] == 0.1
     assert rows[0]["Salesdiscount"] == 0.1
+
+
+def test_template_rows_leave_client_managed_fields_blank():
+    files_payload = [
+        {
+            "metadata": {"creation_date": "D:20260101000000Z"},
+            "business_summary": {
+                "quote_number": "Q-CLIENT",
+                "expiration_date": "01/31/2026",
+                "external_id": "SHOULD-STAY-BLANK",
+                "title": "CLIENT TITLE",
+                "reseller": "CLIENT RESELLER",
+                "reseller_contact": "CLIENT CONTACT",
+                "end_user": "CLIENT END USER",
+            },
+            "line_items_parsed": [
+                {
+                    "sku": "SKU-CLIENT",
+                    "units_qty": "1",
+                    "term_start": "01/01/2026",
+                    "term_end": "01/31/2026",
+                    "list_unit_price_value": 100.0,
+                    "discount_pct_value": 10.0,
+                    "net_unit_price_value": 90.0,
+                }
+            ],
+        }
+    ]
+
+    rows = _build_template_rows(files_payload=files_payload, euro_rate=1.0, margin_percent=0.0)
+
+    assert rows[0]["ExternalId"] is None
+    assert rows[0]["Title"] is None
+    assert rows[0]["Reseller"] is None
+    assert rows[0]["ResellerContact"] is None
+    assert rows[0]["EndUser"] is None
+    assert rows[0]["VendorSpecialPriceApproval"] is None
+    assert rows[0]["VendorSpecialPriceApproval (Line)"] is None
+    assert rows[0]["SalesExchangeRate"] is None
