@@ -18,6 +18,17 @@ DEFAULT_BUSINESS_UNIT = "Spain"
 DEFAULT_CURRENCY = "EUR"
 DEFAULT_LOCATION = "EXN Spain : ES Sales Stock"
 
+CLIENT_MANAGED_HEADERS = {
+    "ExternalId",
+    "Title",
+    "Reseller",
+    "ResellerContact",
+    "EndUser",
+    "VendorSpecialPriceApproval",
+    "VendorSpecialPriceApproval (Line)",
+    "SalesExchangeRate",
+}
+
 TARGET_HEADERS = [
     "Date",
     "Expires",
@@ -46,10 +57,15 @@ HEADER_NUMBER_FORMATS: dict[str, str] = {
 }
 
 HEADER_ALIASES: dict[str, set[str]] = {
+    "ExternalId": {"externalid", "external id", "internalid", "internal id"},
+    "Title": {"title"},
     "Currency": {"currency"},
     "Date": {"date"},
+    "Reseller": {"reseller"},
+    "ResellerContact": {"resellercontact", "reseller contact"},
     "Expires": {"expires"},
     "ExpectedClose": {"expectedclose"},
+    "EndUser": {"enduser", "end user"},
     "BusinessUnit": {"businessunit", "business unit"},
     "Item": {"item"},
     "Quantity": {"quantity", "qty"},
@@ -65,7 +81,17 @@ HEADER_ALIASES: dict[str, set[str]] = {
     "Opportunity": {"opportunity"},
     "Memo (Line)": {"memoline", "memo"},
     "Quote ID (Line)": {"quoteidline", "quoteid", "quote id"},
+    "VendorSpecialPriceApproval": {
+        "vendorspecialpriceapproval",
+        "vendor special price approval",
+    },
+    "VendorSpecialPriceApproval (Line)": {
+        "vendorspecialpriceapprovalline",
+        "vendorspecialpriceapprovalline",
+        "vendor special price approval line",
+    },
     "SalesCurrency": {"salescurrency", "sales currency"},
+    "SalesExchangeRate": {"salesexchangerate", "sales exchange rate"},
 }
 
 NORMALIZED_HEADER_ALIASES: dict[str, set[str]] = {
@@ -197,7 +223,6 @@ def _build_template_rows(
         quote_id = summary.get("quote_number")
         expiration_date = _format_date_for_template(summary.get("expiration_date"))
         creation_date = _parse_creation_date(metadata.get("creation_date"))
-
         for item in line_items:
             discount_fraction = _parse_discount_fraction(
                 item.get("discount_pct_value"),
@@ -229,10 +254,15 @@ def _build_template_rows(
             )
 
             row = {
+                "ExternalId": None,
+                "Title": None,
                 "Currency": DEFAULT_CURRENCY,
                 "Date": creation_date,
+                "Reseller": None,
+                "ResellerContact": None,
                 "Expires": expiration_date,
                 "ExpectedClose": expiration_date,
+                "EndUser": None,
                 "BusinessUnit": DEFAULT_BUSINESS_UNIT,
                 "Item": _clean_sku(item.get("sku")),
                 "Quantity": _parse_quantity(item.get("units_qty")),
@@ -248,7 +278,10 @@ def _build_template_rows(
                 "Opportunity": None,
                 "Memo (Line)": None,
                 "Quote ID (Line)": quote_id,
+                "VendorSpecialPriceApproval": None,
+                "VendorSpecialPriceApproval (Line)": None,
                 "SalesCurrency": DEFAULT_CURRENCY,
+                "SalesExchangeRate": None,
             }
             rows.append(row)
     return rows
@@ -309,9 +342,13 @@ def fill_quote_template(
         raise ValueError("margin_percent must be provided.")
 
     wb = load_workbook(template_path)
+    resolved_sheet_name = sheet_name
     if sheet_name not in wb.sheetnames:
-        raise ValueError(f"Template sheet not found: {sheet_name}")
-    ws = wb[sheet_name]
+        if len(wb.sheetnames) == 1:
+            resolved_sheet_name = wb.sheetnames[0]
+        else:
+            raise ValueError(f"Template sheet not found: {sheet_name}")
+    ws = wb[resolved_sheet_name]
     resolved_header_row, header_columns = _resolve_header_row_and_columns(ws, header_row)
 
     if data_start_row is None:
@@ -354,7 +391,7 @@ def fill_quote_template(
     return {
         "template_path": str(template_path),
         "template_output_path": str(template_output_path),
-        "sheet_name": sheet_name,
+        "sheet_name": resolved_sheet_name,
         "rows_written": len(rows_to_write),
         "capacity": capacity,
         "euro_rate": float(euro_rate),
