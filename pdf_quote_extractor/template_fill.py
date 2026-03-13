@@ -146,20 +146,40 @@ def _parse_discount_fraction(
     return None
 
 
+def _parse_price_value(value: float | None, raw: str | None) -> float | None:
+    if value is not None:
+        return float(value)
+    return parse_currency_value(raw)
+
+
+def _derive_cost_basis(
+    purchase_price_display: float | None,
+    purchase_discount_fraction: float | None,
+    net_unit_price: float | None,
+) -> float | None:
+    if net_unit_price is not None:
+        return net_unit_price
+    if purchase_price_display is None:
+        return None
+    if purchase_discount_fraction is None:
+        return purchase_price_display
+    return round(purchase_price_display * (1.0 - purchase_discount_fraction), 6)
+
+
 def _parse_sales_discount(
     sales_price: float | None,
-    purchase_price: float | None,
+    purchase_cost_basis: float | None,
     euro_rate: float,
     margin_percent: float,
 ) -> float | None:
-    if sales_price is None or purchase_price is None:
+    if sales_price is None or purchase_cost_basis is None:
         return None
     if sales_price == 0:
         return None
     if euro_rate <= 0:
         return None
     margin_multiplier = 1.0 + (margin_percent / 100.0)
-    value = 1.0 - (((purchase_price / euro_rate) * margin_multiplier) / sales_price)
+    value = 1.0 - (((purchase_cost_basis / euro_rate) * margin_multiplier) / sales_price)
     return round(value, 6)
 
 
@@ -183,15 +203,27 @@ def _build_template_rows(
                 item.get("discount_pct_value"),
                 item.get("discount_pct_raw"),
             )
-            purchase_price = item.get("net_unit_price_value")
+            sales_price = _parse_price_value(
+                item.get("list_unit_price_value"),
+                item.get("list_unit_price_raw"),
+            )
+            purchase_price = sales_price
             if purchase_price is None:
-                purchase_price = parse_currency_value(item.get("net_unit_price_raw"))
-            sales_price = item.get("list_unit_price_value")
-            if sales_price is None:
-                sales_price = parse_currency_value(item.get("list_unit_price_raw"))
+                purchase_price = _parse_price_value(
+                    item.get("net_unit_price_value"),
+                    item.get("net_unit_price_raw"),
+                )
+            purchase_cost_basis = _derive_cost_basis(
+                purchase_price_display=purchase_price,
+                purchase_discount_fraction=discount_fraction,
+                net_unit_price=_parse_price_value(
+                    item.get("net_unit_price_value"),
+                    item.get("net_unit_price_raw"),
+                ),
+            )
             sales_discount = _parse_sales_discount(
                 sales_price=sales_price,
-                purchase_price=purchase_price,
+                purchase_cost_basis=purchase_cost_basis,
                 euro_rate=euro_rate,
                 margin_percent=margin_percent,
             )
