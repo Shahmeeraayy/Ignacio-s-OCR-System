@@ -334,6 +334,56 @@ def test_template_fill_falls_back_to_single_sheet_when_default_name_is_missing(t
     assert "Client Template" in wb_out.sheetnames
 
 
+def test_template_fill_upgrades_legacy_salescurrency_layout(tmp_path):
+    project_root = Path(__file__).resolve().parents[1]
+    fixture_pdf = project_root / "tests" / "fixtures" / "Q-220053-20251224-0752  (1).pdf"
+    source_template = project_root / "tests" / "fixtures" / "Example with calculations.xlsx"
+    config_path = project_root / "config.yaml"
+
+    template_file = tmp_path / "template_legacy_layout.xlsx"
+    shutil.copy2(source_template, template_file)
+
+    wb = load_workbook(template_file, data_only=False)
+    ws = wb["QuoteExportResults"]
+    ws.delete_cols(25, 2)
+    wb.save(template_file)
+
+    output_xlsx = tmp_path / "quote_output.xlsx"
+    output_json = tmp_path / "quote_output.json"
+    filled_template = tmp_path / "quote_template_filled.xlsx"
+
+    exit_code, payload = run_pipeline(
+        input_path=fixture_pdf,
+        output_path=output_xlsx,
+        json_output_path=output_json,
+        config_path=config_path,
+        ocr_mode="off",
+        strict=True,
+        include_char_layer=False,
+        include_tables=True,
+        tesseract_cmd=None,
+        poppler_path=None,
+        template_path=template_file,
+        template_output_path=filled_template,
+        euro_rate=1.17,
+        margin_percent=10.0,
+        write_audit_workbook=False,
+    )
+
+    assert exit_code == 0
+    assert payload["template_output"]["rows_written"] == 4
+
+    wb_out = load_workbook(filled_template, data_only=False)
+    ws_out = wb_out["QuoteExportResults"]
+    headers = [ws_out.cell(4, col).value for col in range(1, len(EXPECTED_TEMPLATE_HEADERS) + 1)]
+    assert headers == EXPECTED_TEMPLATE_HEADERS
+    assert ws_out["X5"].value == "Q-220053-2"
+    assert ws_out["Y5"].value in (None, "")
+    assert ws_out["Z5"].value in (None, "")
+    assert ws_out["AA5"].value == "EUR"
+    assert ws_out["AB5"].value in (None, "")
+
+
 def test_template_rows_include_included_zero_value_items():
     files_payload = [
         {

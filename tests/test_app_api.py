@@ -2,6 +2,7 @@ import io
 from pathlib import Path
 
 from app import app
+from openpyxl import load_workbook
 from werkzeug.datastructures import MultiDict
 
 
@@ -69,6 +70,40 @@ def test_extract_template_return_file():
     )
     assert response.headers["X-Rows-Written"] == "4"
     assert len(response.data) > 1000
+
+    workbook = load_workbook(io.BytesIO(response.data), data_only=False)
+    worksheet = workbook["QuoteExportResults"]
+    assert worksheet["X5"].value == "Q-220053-2"
+    assert worksheet["Y5"].value in (None, "")
+    assert worksheet["Z5"].value in (None, "")
+    assert worksheet["AA5"].value == "EUR"
+    assert worksheet["AB5"].value in (None, "")
+
+
+def test_extract_template_return_file_uses_bundled_template_when_none_uploaded():
+    client = app.test_client()
+    project_root = Path(__file__).resolve().parents[1]
+    pdf_path = project_root / "tests" / "fixtures" / "Q-220053-20251224-0752  (1).pdf"
+
+    payload = {
+        "pdf": (io.BytesIO(pdf_path.read_bytes()), "quote.pdf"),
+        "strict": "true",
+        "template_only": "true",
+        "ocr_mode": "off",
+        "euro_rate": "1.17",
+        "margin_percent": "10",
+    }
+    response = client.post("/extract-template", data=payload, content_type="multipart/form-data")
+    assert response.status_code == 200
+    assert response.headers["X-Rows-Written"] == "4"
+
+    workbook = load_workbook(io.BytesIO(response.data), data_only=False)
+    worksheet = workbook[workbook.sheetnames[0]]
+    assert worksheet["X3"].value == "Q-220053-2"
+    assert worksheet["Y3"].value in (None, "")
+    assert worksheet["Z3"].value in (None, "")
+    assert worksheet["AA3"].value == "EUR"
+    assert worksheet["AB3"].value in (None, "")
 
 
 def test_extract_template_with_multiple_identical_pdfs_keeps_all_by_default():
