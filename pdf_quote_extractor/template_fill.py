@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+from copy import copy
 import re
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 from openpyxl import load_workbook
+from openpyxl.utils import get_column_letter
 
 from .normalize import parse_currency_value, parse_number_value
 
@@ -29,7 +31,38 @@ CLIENT_MANAGED_HEADERS = {
     "SalesExchangeRate",
 }
 
-TARGET_HEADERS = [
+CANONICAL_TEMPLATE_HEADERS = [
+    "ExternalId",
+    "Title",
+    "Currency",
+    "Date",
+    "Reseller",
+    "ResellerContact",
+    "Expires",
+    "ExpectedClose",
+    "EndUser",
+    "BusinessUnit",
+    "Item",
+    "Quantity",
+    "Salesprice",
+    "Salesdiscount",
+    "Purchaseprice",
+    "PurchaseDiscount",
+    "Location",
+    "ContractStart",
+    "ContractEnd",
+    "Serial#Supported",
+    "Rebate",
+    "Opportunity",
+    "Memo (Line)",
+    "Quote ID (Line)",
+    "VendorSpecialPriceApproval",
+    "VendorSpecialPriceApproval (Line)",
+    "SalesCurrency",
+    "SalesExchangeRate",
+]
+
+REQUIRED_TEMPLATE_HEADERS = [
     "Date",
     "Expires",
     "ExpectedClose",
@@ -46,6 +79,8 @@ TARGET_HEADERS = [
     "Opportunity",
     "Memo (Line)",
     "Quote ID (Line)",
+    "SalesCurrency",
+    "SalesExchangeRate",
 ]
 
 HEADER_NUMBER_FORMATS: dict[str, str] = {
@@ -300,11 +335,85 @@ def _match_headers_in_row(ws, header_row: int) -> dict[str, int]:
     return headers
 
 
+def _copy_column_template(ws, source_col_idx: int, target_col_idx: int) -> None:
+    source_letter = get_column_letter(source_col_idx)
+    target_letter = get_column_letter(target_col_idx)
+    source_dimension = ws.column_dimensions[source_letter]
+    target_dimension = ws.column_dimensions[target_letter]
+    target_dimension.width = source_dimension.width
+    target_dimension.hidden = source_dimension.hidden
+    target_dimension.bestFit = source_dimension.bestFit
+    target_dimension.outlineLevel = source_dimension.outlineLevel
+    target_dimension.collapsed = source_dimension.collapsed
+
+    for row_idx in range(1, ws.max_row + 1):
+        source_cell = ws.cell(row_idx, source_col_idx)
+        target_cell = ws.cell(row_idx, target_col_idx)
+        if source_cell.has_style:
+            target_cell._style = copy(source_cell._style)
+
+
+def _copy_row_template(ws, source_row_idx: int, target_row_idx: int) -> None:
+    source_dimension = ws.row_dimensions[source_row_idx]
+    target_dimension = ws.row_dimensions[target_row_idx]
+    target_dimension.height = source_dimension.height
+    target_dimension.hidden = source_dimension.hidden
+    target_dimension.outlineLevel = source_dimension.outlineLevel
+    target_dimension.collapsed = source_dimension.collapsed
+
+    for col_idx in range(1, ws.max_column + 1):
+        source_cell = ws.cell(source_row_idx, col_idx)
+        target_cell = ws.cell(target_row_idx, col_idx)
+        if source_cell.has_style:
+            target_cell._style = copy(source_cell._style)
+
+
+def _canonicalize_template_layout(ws, header_row: int, headers: dict[str, int]) -> dict[str, int]:
+    if "Quote ID (Line)" in headers:
+        expected_col = headers["Quote ID (Line)"] + 1
+        for header in (
+            "VendorSpecialPriceApproval",
+            "VendorSpecialPriceApproval (Line)",
+            "SalesCurrency",
+            "SalesExchangeRate",
+        ):
+            actual_col = headers.get(header)
+            if actual_col is None:
+                ws.insert_cols(expected_col, amount=1)
+                source_col_idx = min(expected_col + 1, ws.max_column)
+                _copy_column_template(ws, source_col_idx, expected_col)
+                ws.cell(header_row, expected_col).value = header
+                headers = _match_headers_in_row(ws, header_row)
+                actual_col = headers.get(header)
+            if actual_col != expected_col:
+                break
+            expected_col += 1
+
+    headers = _match_headers_in_row(ws, header_row)
+    for header, col_idx in headers.items():
+        ws.cell(header_row, col_idx).value = header
+    return _match_headers_in_row(ws, header_row)
+
+
+def _ensure_row_capacity(ws, data_start_row: int, required_rows: int) -> int:
+    capacity = max(0, ws.max_row - data_start_row + 1)
+    if required_rows <= capacity:
+        return capacity
+
+    rows_to_add = required_rows - capacity
+    source_row_idx = max(data_start_row, ws.max_row)
+    original_max_row = ws.max_row
+    ws.insert_rows(original_max_row + 1, amount=rows_to_add)
+    for offset in range(rows_to_add):
+        _copy_row_template(ws, source_row_idx, original_max_row + offset + 1)
+    return max(0, ws.max_row - data_start_row + 1)
+
+
 def _resolve_header_row_and_columns(ws, header_row: int | None) -> tuple[int, dict[str, int]]:
     if header_row is not None:
         headers = _match_headers_in_row(ws, header_row)
-        if all(name in headers for name in TARGET_HEADERS):
-            return header_row, headers
+        if all(name in headers for name in REQUIRED_TEMPLATE_HEADERS):
+            return header_row, _canonicalize_template_layout(ws, header_row, headers)
 
     max_scan_row = min(ws.max_row, 50)
     best_row = None
@@ -314,10 +423,10 @@ def _resolve_header_row_and_columns(ws, header_row: int | None) -> tuple[int, di
         if len(headers) > len(best_headers):
             best_headers = headers
             best_row = row_idx
-        if all(name in headers for name in TARGET_HEADERS):
-            return row_idx, headers
+        if all(name in headers for name in REQUIRED_TEMPLATE_HEADERS):
+            return row_idx, _canonicalize_template_layout(ws, row_idx, headers)
 
-    missing = [name for name in TARGET_HEADERS if name not in best_headers]
+    missing = [name for name in REQUIRED_TEMPLATE_HEADERS if name not in best_headers]
     missing_str = ", ".join(missing)
     if best_row is not None:
         raise ValueError(
@@ -365,11 +474,7 @@ def fill_quote_template(
         euro_rate=float(euro_rate),
         margin_percent=float(margin_percent),
     )
-    capacity = ws.max_row - resolved_data_start_row + 1
-    if len(rows_to_write) > capacity:
-        raise ValueError(
-            f"Template row capacity exceeded: {len(rows_to_write)} rows required, capacity is {capacity}."
-        )
+    capacity = _ensure_row_capacity(ws, resolved_data_start_row, len(rows_to_write))
 
     # Clear previous data only in yellow target columns.
     for row_idx in range(resolved_data_start_row, ws.max_row + 1):
