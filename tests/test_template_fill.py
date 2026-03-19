@@ -1,3 +1,5 @@
+import csv
+import io
 from pathlib import Path
 import shutil
 
@@ -148,6 +150,51 @@ def test_template_only_mode_skips_audit_workbook(tmp_path):
     assert payload["file_count"] == 1
     assert filled_template.exists()
     assert not output_xlsx.exists()
+
+
+def test_csv_export_writes_client_ready_rows(tmp_path):
+    project_root = Path(__file__).resolve().parents[1]
+    fixture_pdf = project_root / "tests" / "fixtures" / "Q-220053-20251224-0752  (1).pdf"
+    config_path = project_root / "config.yaml"
+
+    output_xlsx = tmp_path / "quote_output.xlsx"
+    output_json = tmp_path / "quote_output.json"
+    csv_output = tmp_path / "quote_template_filled.csv"
+
+    exit_code, payload = run_pipeline(
+        input_path=fixture_pdf,
+        output_path=output_xlsx,
+        json_output_path=output_json,
+        config_path=config_path,
+        ocr_mode="off",
+        strict=True,
+        include_char_layer=False,
+        include_tables=True,
+        tesseract_cmd=None,
+        poppler_path=None,
+        template_path=None,
+        template_output_path=csv_output,
+        euro_rate=1.17,
+        margin_percent=10.0,
+        write_audit_workbook=False,
+    )
+
+    assert exit_code == 0
+    assert payload["template_output"]["rows_written"] == 4
+    assert payload["template_output"]["format"] == "csv"
+    assert csv_output.exists()
+
+    rows = list(csv.reader(io.StringIO(csv_output.read_text(encoding="utf-8-sig")), delimiter=";"))
+    assert rows[0] == EXPECTED_TEMPLATE_HEADERS
+    assert len(rows) == 5
+    assert rows[1][10] == "NK-EGRESS-DIP"
+    assert rows[1][11] == "10000"
+    assert rows[1][12] == "60,00"
+    assert rows[1][13] == "84,49%"
+    assert rows[1][14] == "60,00"
+    assert rows[1][15] == "83,50%"
+    assert rows[1][23] == "Q-220053-2"
+    assert rows[1][26] == "EUR"
 
 
 def test_template_fill_with_multiple_pdfs(tmp_path):

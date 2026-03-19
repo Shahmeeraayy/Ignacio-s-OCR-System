@@ -1,9 +1,16 @@
+import csv
 import io
 from pathlib import Path
 
 from app import app
 from openpyxl import load_workbook
+from pdf_quote_extractor.template_fill import CANONICAL_TEMPLATE_HEADERS
 from werkzeug.datastructures import MultiDict
+
+
+def _read_csv_rows(data: bytes) -> list[list[str]]:
+    text = data.decode("utf-8-sig")
+    return list(csv.reader(io.StringIO(text), delimiter=";"))
 
 
 def test_health_endpoint():
@@ -51,11 +58,9 @@ def test_extract_template_return_file():
     client = app.test_client()
     project_root = Path(__file__).resolve().parents[1]
     pdf_path = project_root / "tests" / "fixtures" / "Q-220053-20251224-0752  (1).pdf"
-    template_path = project_root / "tests" / "fixtures" / "Example with calculations.xlsx"
 
     payload = {
         "pdf": (io.BytesIO(pdf_path.read_bytes()), "quote.pdf"),
-        "template": (io.BytesIO(template_path.read_bytes()), "template.xlsx"),
         "strict": "true",
         "template_only": "true",
         "ocr_mode": "off",
@@ -64,20 +69,22 @@ def test_extract_template_return_file():
     }
     response = client.post("/extract-template", data=payload, content_type="multipart/form-data")
     assert response.status_code == 200
-    assert (
-        response.headers["Content-Type"]
-        == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    )
+    assert response.headers["Content-Type"] == "text/csv; charset=utf-8"
     assert response.headers["X-Rows-Written"] == "4"
-    assert len(response.data) > 1000
+    assert response.headers["X-Output-Format"] == "csv"
 
-    workbook = load_workbook(io.BytesIO(response.data), data_only=False)
-    worksheet = workbook["QuoteExportResults"]
-    assert worksheet["X5"].value == "Q-220053-2"
-    assert worksheet["Y5"].value in (None, "")
-    assert worksheet["Z5"].value in (None, "")
-    assert worksheet["AA5"].value == "EUR"
-    assert worksheet["AB5"].value in (None, "")
+    rows = _read_csv_rows(response.data)
+    assert rows[0] == CANONICAL_TEMPLATE_HEADERS
+    assert len(rows) == 5
+    assert rows[1][2] == "EUR"
+    assert rows[1][10] == "NK-EGRESS-DIP"
+    assert rows[1][11] == "10000"
+    assert rows[1][12] == "60,00"
+    assert rows[1][13] == "84,49%"
+    assert rows[1][14] == "60,00"
+    assert rows[1][15] == "83,50%"
+    assert rows[1][23] == "Q-220053-2"
+    assert rows[1][26] == "EUR"
 
 
 def test_extract_template_return_file_uses_bundled_template_when_none_uploaded():
@@ -96,14 +103,46 @@ def test_extract_template_return_file_uses_bundled_template_when_none_uploaded()
     response = client.post("/extract-template", data=payload, content_type="multipart/form-data")
     assert response.status_code == 200
     assert response.headers["X-Rows-Written"] == "4"
+    assert response.headers["X-Output-Format"] == "csv"
+
+    rows = _read_csv_rows(response.data)
+    assert rows[0] == CANONICAL_TEMPLATE_HEADERS
+    assert rows[1][23] == "Q-220053-2"
+    assert rows[1][26] == "EUR"
+
+
+def test_extract_template_return_xlsx_when_requested():
+    client = app.test_client()
+    project_root = Path(__file__).resolve().parents[1]
+    pdf_path = project_root / "tests" / "fixtures" / "Q-220053-20251224-0752  (1).pdf"
+    template_path = project_root / "tests" / "fixtures" / "Example with calculations.xlsx"
+
+    payload = {
+        "pdf": (io.BytesIO(pdf_path.read_bytes()), "quote.pdf"),
+        "template": (io.BytesIO(template_path.read_bytes()), "template.xlsx"),
+        "strict": "true",
+        "template_only": "true",
+        "ocr_mode": "off",
+        "euro_rate": "1.17",
+        "margin_percent": "10",
+        "output_format": "xlsx",
+    }
+    response = client.post("/extract-template", data=payload, content_type="multipart/form-data")
+    assert response.status_code == 200
+    assert (
+        response.headers["Content-Type"]
+        == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+    assert response.headers["X-Rows-Written"] == "4"
+    assert response.headers["X-Output-Format"] == "xlsx"
 
     workbook = load_workbook(io.BytesIO(response.data), data_only=False)
-    worksheet = workbook[workbook.sheetnames[0]]
-    assert worksheet["X3"].value == "Q-220053-2"
-    assert worksheet["Y3"].value in (None, "")
-    assert worksheet["Z3"].value in (None, "")
-    assert worksheet["AA3"].value == "EUR"
-    assert worksheet["AB3"].value in (None, "")
+    worksheet = workbook["QuoteExportResults"]
+    assert worksheet["X5"].value == "Q-220053-2"
+    assert worksheet["Y5"].value in (None, "")
+    assert worksheet["Z5"].value in (None, "")
+    assert worksheet["AA5"].value == "EUR"
+    assert worksheet["AB5"].value in (None, "")
 
 
 def test_extract_template_with_multiple_identical_pdfs_keeps_all_by_default():

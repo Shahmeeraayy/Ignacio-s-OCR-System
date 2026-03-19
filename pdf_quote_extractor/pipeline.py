@@ -11,6 +11,7 @@ from .raw_extract import extract_pdf_raw
 from .template_fill import (
     DEFAULT_TEMPLATE_SHEET,
     fill_quote_template,
+    write_quote_csv,
 )
 from .validate import run_validation
 from .writers import write_excel, write_json
@@ -234,17 +235,27 @@ def run_pipeline(
         "file_count": len(files_payload),
         "files": files_payload,
     }
-    if template_path and template_output_path:
-        template_result = fill_quote_template(
-            template_path=template_path,
-            template_output_path=template_output_path,
-            files_payload=files_payload,
-            euro_rate=euro_rate,
-            margin_percent=margin_percent,
-            sheet_name=template_sheet,
-            header_row=template_header_row,
-            data_start_row=template_data_start_row,
-        )
+    if template_output_path:
+        if template_output_path.suffix.lower() == ".csv":
+            template_result = write_quote_csv(
+                output_path=template_output_path,
+                files_payload=files_payload,
+                euro_rate=euro_rate,
+                margin_percent=margin_percent,
+            )
+        else:
+            if template_path is None:
+                raise ValueError("template_path is required for non-CSV template output.")
+            template_result = fill_quote_template(
+                template_path=template_path,
+                template_output_path=template_output_path,
+                files_payload=files_payload,
+                euro_rate=euro_rate,
+                margin_percent=margin_percent,
+                sheet_name=template_sheet,
+                header_row=template_header_row,
+                data_start_row=template_data_start_row,
+            )
         json_payload["template_output"] = template_result
     write_json(json_output_path, json_payload)
 
