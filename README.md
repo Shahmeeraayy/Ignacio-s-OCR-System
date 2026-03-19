@@ -1,6 +1,7 @@
-# Lossless PDF to Excel Extraction (Netskope Quotes)
+# Lossless PDF Quote Export Extraction (Netskope Quotes)
 
 This project extracts Netskope quote PDFs into:
+- A client-ready CSV export for quote import
 - A multi-sheet Excel workbook for operations and review
 - A JSON artifact for auditability and integrations
 
@@ -73,7 +74,7 @@ Vercel config already runs frontend build during deploy:
 
 ### API Usage Example
 
-`multipart/form-data` request with `pdf` and optionally `template`:
+`multipart/form-data` request with `pdf`:
 
 ```bash
 curl -X POST "<YOUR_URL>/extract-template" \
@@ -82,10 +83,15 @@ curl -X POST "<YOUR_URL>/extract-template" \
   -F "strict=true" \
   -F "template_only=true" \
   -F "ocr_mode=off" \
+  -F "output_format=csv" \
   -F "vendor=netskope" \
   -F "euro_rate=1.17" \
   -F "margin_percent=10"
 ```
+
+By default, file-download responses are CSV.
+If you need the old template workbook instead, add:
+- `output_format=xlsx` and provide `template` or set `DEFAULT_TEMPLATE_PATH`
 
 If you want JSON response instead of file download, add:
 - `return_json=true`
@@ -98,10 +104,10 @@ Send multiple PDFs in one request by repeating `pdf`:
 curl -X POST "<YOUR_URL>/extract-template" \
   -F "pdf=@quote1.pdf" \
   -F "pdf=@quote2.pdf" \
-  -F "template=@Example with calculations.xlsx" \
   -F "strict=true" \
   -F "template_only=true" \
   -F "ocr_mode=off" \
+  -F "output_format=csv" \
   -F "vendor=netskope" \
   -F "euro_rate=1.17" \
   -F "margin_percent=10"
@@ -150,7 +156,7 @@ python extract.py --input <file_or_folder> --output <output.xlsx> --json-output 
 - `--tesseract-cmd`: explicit path to `tesseract.exe`
 - `--poppler-path`: explicit Poppler bin path
 - `--template`: optional Excel template path (fills yellow columns)
-- `--template-output`: output for filled template (default: `<output>.template_filled.xlsx`)
+- `--template-output`: output for filled quote export (supports `.xlsx` or `.csv`; default: `<output>.template_filled.xlsx`)
 - `--template-sheet`: template sheet name (default: `QuoteExportResults`)
 - `--template-header-row`: optional header row index (auto-detected if omitted)
 - `--template-data-start-row`: optional first line row index (defaults to `header_row + 1`)

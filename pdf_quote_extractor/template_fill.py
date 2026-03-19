@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import csv
 from copy import copy
 import re
 from datetime import datetime
@@ -322,6 +323,29 @@ def _build_template_rows(
     return rows
 
 
+def _format_decimal_for_csv(value: float, decimals: int = 2) -> str:
+    return f"{value:.{decimals}f}".replace(".", ",")
+
+
+def _format_percentage_for_csv(value: float) -> str:
+    return f"{value * 100:.2f}%".replace(".", ",")
+
+
+def _format_csv_cell(header: str, value: Any) -> str:
+    if value in (None, ""):
+        return ""
+    if header == "Quantity":
+        if isinstance(value, float) and not value.is_integer():
+            return _format_decimal_for_csv(value)
+        if isinstance(value, int | float):
+            return str(int(value))
+    if header in {"Salesprice", "Purchaseprice", "SalesExchangeRate"} and isinstance(value, int | float):
+        return _format_decimal_for_csv(float(value))
+    if header in {"Salesdiscount", "PurchaseDiscount"} and isinstance(value, int | float):
+        return _format_percentage_for_csv(float(value))
+    return str(value)
+
+
 def _match_headers_in_row(ws, header_row: int) -> dict[str, int]:
     headers: dict[str, int] = {}
     for col_idx in range(1, ws.max_column + 1):
@@ -503,4 +527,36 @@ def fill_quote_template(
         "margin_percent": float(margin_percent),
         "header_row": resolved_header_row,
         "data_start_row": resolved_data_start_row,
+    }
+
+
+def write_quote_csv(
+    output_path: Path,
+    files_payload: list[dict[str, Any]],
+    euro_rate: float | None,
+    margin_percent: float | None,
+    delimiter: str = ";",
+) -> dict[str, Any]:
+    if euro_rate is None or euro_rate <= 0:
+        raise ValueError("euro_rate must be provided and greater than 0.")
+    if margin_percent is None:
+        raise ValueError("margin_percent must be provided.")
+
+    rows_to_write = _build_template_rows(
+        files_payload=files_payload,
+        euro_rate=float(euro_rate),
+        margin_percent=float(margin_percent),
+    )
+
+    with output_path.open("w", encoding="utf-8-sig", newline="") as csv_file:
+        writer = csv.writer(csv_file, delimiter=delimiter, lineterminator="\r\n")
+        writer.writerow(CANONICAL_TEMPLATE_HEADERS)
+        for row in rows_to_write:
+            writer.writerow([_format_csv_cell(header, row.get(header)) for header in CANONICAL_TEMPLATE_HEADERS])
+
+    return {
+        "template_output_path": str(output_path),
+        "rows_written": len(rows_to_write),
+        "format": "csv",
+        "delimiter": delimiter,
     }

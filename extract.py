@@ -21,7 +21,7 @@ def _default_template_output(output_path: Path) -> Path:
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Lossless PDF extraction for Netskope quote PDFs to Excel and JSON."
+        description="Lossless PDF extraction for Netskope quote PDFs to audit workbooks, CSV, and JSON."
     )
     parser.add_argument(
         "--input",
@@ -81,7 +81,7 @@ def main() -> int:
     parser.add_argument(
         "--template-output",
         default=None,
-        help="Output path for filled template workbook. Default: <output>.template_filled.xlsx",
+        help="Output path for filled quote export (.xlsx or .csv). Default: <output>.template_filled.xlsx",
     )
     parser.add_argument(
         "--template-sheet",

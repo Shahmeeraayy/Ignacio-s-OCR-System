@@ -240,20 +240,6 @@ def extract_template() -> Response:
         return jsonify({"ok": False, "error": "Missing required file field: pdf (or pdfs)"}), 400
 
     uploaded_template = request.files.get("template")
-    default_template = _default_template_path()
-    if uploaded_template is None and default_template is None:
-        return (
-            jsonify(
-                {
-                    "ok": False,
-                    "error": (
-                        "No template uploaded and no default template found. "
-                        "Provide form-data file field 'template' or set DEFAULT_TEMPLATE_PATH."
-                    ),
-                }
-            ),
-            400,
-        )
 
     ocr_mode = request.form.get("ocr_mode", "off")
     if ocr_mode not in {"off", "auto", "always"}:
@@ -263,6 +249,9 @@ def extract_template() -> Response:
     template_only = _bool_from_str(request.form.get("template_only"), default=True)
     return_json = _bool_from_str(request.form.get("return_json"), default=False)
     dedupe_uploads = _bool_from_str(request.form.get("dedupe"), default=False)
+    output_format = (request.form.get("output_format") or "csv").strip().lower()
+    if output_format not in {"csv", "xlsx"}:
+        return jsonify({"ok": False, "error": "output_format must be one of: csv, xlsx"}), 400
     euro_rate, euro_rate_error = _parse_required_float(request.form.get("euro_rate"), "euro_rate")
     if euro_rate_error:
         return jsonify({"ok": False, "error": euro_rate_error}), 400
@@ -283,6 +272,28 @@ def extract_template() -> Response:
         return jsonify({"ok": False, "error": str(exc)}), 400
     if not config_path.exists():
         return jsonify({"ok": False, "error": f"Config file not found: {config_path}"}), 500
+
+    template_path: Path | None = None
+    template_name: str | None = None
+    default_template = _default_template_path()
+    if output_format == "xlsx":
+        if uploaded_template is not None and uploaded_template.filename:
+            template_name = secure_filename(uploaded_template.filename) or "template.xlsx"
+            if not template_name.lower().endswith(".xlsx"):
+                template_name = f"{template_name}.xlsx"
+        elif default_template is None:
+            return (
+                jsonify(
+                    {
+                        "ok": False,
+                        "error": (
+                            "No template uploaded and no default template found. "
+                            "Provide form-data file field 'template' or set DEFAULT_TEMPLATE_PATH."
+                        ),
+                    }
+                ),
+                400,
+            )
 
     with tempfile.TemporaryDirectory() as tmpdir:
         temp_dir = Path(tmpdir)
@@ -320,19 +331,18 @@ def extract_template() -> Response:
                 )
             return jsonify({"ok": False, "error": "No valid PDFs were processed."}), 400
 
-        if uploaded_template is not None and uploaded_template.filename:
-            template_name = secure_filename(uploaded_template.filename) or "template.xlsx"
-            if not template_name.lower().endswith(".xlsx"):
-                template_name = f"{template_name}.xlsx"
-            template_path = temp_dir / template_name
-            uploaded_template.save(template_path)
-        else:
-            template_path = default_template
-            assert template_path is not None
+        if output_format == "xlsx":
+            if uploaded_template is not None and uploaded_template.filename:
+                assert template_name is not None
+                template_path = temp_dir / template_name
+                uploaded_template.save(template_path)
+            else:
+                template_path = default_template
+                assert template_path is not None
 
         audit_output_path = temp_dir / "audit_output.xlsx"
         json_output_path = temp_dir / "run_output.json"
-        template_output_path = temp_dir / "filled_template.xlsx"
+        template_output_path = temp_dir / f"filled_template.{output_format}"
 
         try:
             exit_code, payload = run_pipeline(
@@ -362,6 +372,7 @@ def extract_template() -> Response:
             "dedupe_enabled": dedupe_uploads,
         }
         payload["vendor"] = selected_vendor
+        payload["output_format"] = output_format
 
         if strict and exit_code != 0:
             return jsonify({"ok": False, "error": "Strict validation failed.", "payload": payload}), 422
@@ -370,11 +381,15 @@ def extract_template() -> Response:
             return jsonify({"ok": True, "payload": payload})
 
         file_bytes = template_output_path.read_bytes()
-        response = Response(
-            file_bytes,
-            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        )
-        response.headers["Content-Disposition"] = 'attachment; filename="filled_template.xlsx"'
+        if output_format == "csv":
+            response = Response(file_bytes, content_type="text/csv; charset=utf-8")
+            response.headers["Content-Disposition"] = 'attachment; filename="filled_template.csv"'
+        else:
+            response = Response(
+                file_bytes,
+                mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            )
+            response.headers["Content-Disposition"] = 'attachment; filename="filled_template.xlsx"'
         template_summary: dict[str, Any] = payload.get("template_output", {}) if isinstance(payload, dict) else {}
         upload_summary: dict[str, Any] = payload.get("upload_summary", {}) if isinstance(payload, dict) else {}
         response.headers["X-Processed-Files"] = str(payload.get("file_count", 0))
@@ -383,6 +398,7 @@ def extract_template() -> Response:
         response.headers["X-Dedupe-Enabled"] = str(upload_summary.get("dedupe_enabled", False)).lower()
         response.headers["X-Rows-Written"] = str(template_summary.get("rows_written", 0))
         response.headers["X-Vendor"] = selected_vendor
+        response.headers["X-Output-Format"] = output_format
         return response
 
 
