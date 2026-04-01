@@ -136,21 +136,6 @@ NORMALIZED_HEADER_ALIASES: dict[str, set[str]] = {
 }
 
 
-def _parse_creation_date(raw: str | None) -> str | None:
-    if not raw:
-        return None
-    match = re.search(r"D:(\d{4})(\d{2})(\d{2})", raw)
-    if not match:
-        return None
-    try:
-        year = int(match.group(1))
-        month = int(match.group(2))
-        day = int(match.group(3))
-        return datetime(year, month, day).strftime("%d/%m/%Y")
-    except ValueError:
-        return None
-
-
 def _clean_single_line(text: str | None) -> str | None:
     if text is None:
         return None
@@ -252,13 +237,11 @@ def _build_template_rows(
 ) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     for file_payload in files_payload:
-        metadata = file_payload.get("metadata", {})
         summary = file_payload.get("business_summary", {})
         line_items = file_payload.get("line_items_parsed", [])
 
         quote_id = summary.get("quote_number")
         expiration_date = _format_date_for_template(summary.get("expiration_date"))
-        creation_date = _parse_creation_date(metadata.get("creation_date"))
         for item in line_items:
             discount_fraction = _parse_discount_fraction(
                 item.get("discount_pct_value"),
@@ -293,7 +276,7 @@ def _build_template_rows(
                 "ExternalId": None,
                 "Title": None,
                 "Currency": DEFAULT_CURRENCY,
-                "Date": creation_date,
+                "Date": None,
                 "Reseller": None,
                 "ResellerContact": None,
                 "Expires": expiration_date,
