@@ -240,8 +240,8 @@ def _parse_sales_discount(
         return None
     if euro_rate <= 0:
         return None
-    margin_multiplier = 1.0 + (margin_percent / 100.0)
-    value = 1.0 - (((purchase_cost_basis / euro_rate) * margin_multiplier) / sales_price)
+    margin_divisor = 1.0 - (margin_percent / 100.0)
+    value = 1.0 - (((purchase_cost_basis / euro_rate) / margin_divisor) / sales_price)
     return round(value, 6)
 
 
