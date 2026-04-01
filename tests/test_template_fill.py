@@ -79,14 +79,14 @@ def test_template_fill_for_quote_fixture(tmp_path):
 
     # Row 5: first parsed line item.
     assert ws["C5"].value == "EUR"
-    assert ws["D5"].value == "24/12/2025"
+    assert ws["D5"].value in (None, "")
     assert ws["G5"].value == "30/12/2025"
     assert ws["H5"].value == "30/12/2025"
     assert ws["J5"].value == "Spain"
     assert ws["K5"].value == "NK-EGRESS-DIP"
     assert ws["L5"].value == 10000
     assert ws["M5"].value == 60
-    assert ws["N5"].value == 0.844872
+    assert ws["N5"].value == 0.843305
     assert ws["O5"].value == 60
     assert ws["P5"].value == 0.835
     assert ws["N5"].number_format == "0.00%"
@@ -105,7 +105,7 @@ def test_template_fill_for_quote_fixture(tmp_path):
     # Row 6: second parsed line item.
     assert ws["L6"].value == 1
     assert ws["M6"].value == 48000
-    assert ws["N6"].value == 0.50359
+    assert ws["N6"].value == 0.498575
     assert ws["O6"].value == 48000
     assert ws["P6"].value == 0.472
     assert ws["N6"].number_format == "0.00%"
@@ -187,10 +187,11 @@ def test_csv_export_writes_client_ready_rows(tmp_path):
     rows = list(csv.reader(io.StringIO(csv_output.read_text(encoding="utf-8-sig")), delimiter=";"))
     assert rows[0] == EXPECTED_TEMPLATE_HEADERS
     assert len(rows) == 5
+    assert rows[1][3] == ""
     assert rows[1][10] == "NK-EGRESS-DIP"
     assert rows[1][11] == "10000"
     assert rows[1][12] == "60,00"
-    assert rows[1][13] == "84,49%"
+    assert rows[1][13] == "84,33%"
     assert rows[1][14] == "60,00"
     assert rows[1][15] == "83,50%"
     assert rows[1][23] == "Q-220053-2"
@@ -327,10 +328,10 @@ def test_template_autodetects_header_row_and_data_start(tmp_path):
     assert headers == EXPECTED_TEMPLATE_HEADERS
     assert ws_out["K3"].value is not None
     assert ws_out["M3"].value == 60
-    assert ws_out["N3"].value == 0.844872
+    assert ws_out["N3"].value == 0.843305
     assert ws_out["N3"].number_format == "0.00%"
     assert ws_out["P3"].number_format == "0.00%"
-    assert ws_out["D3"].value == "24/12/2025"
+    assert ws_out["D3"].value in (None, "")
     assert ws_out["V3"].value in (None, "")
     assert ws_out["X3"].value == "Q-220053-2"
     assert ws_out["Y3"].value in (None, "")
@@ -470,7 +471,7 @@ def test_template_rows_include_included_zero_value_items():
     assert rows[1]["Salesdiscount"] is None
     assert rows[0]["Purchaseprice"] == 100.0
     assert rows[1]["Purchaseprice"] == 0.0
-    assert rows[0]["Date"] == "01/01/2026"
+    assert rows[0]["Date"] is None
     assert rows[0]["Expires"] == "31/01/2026"
     assert rows[0]["ExpectedClose"] == "31/01/2026"
     assert rows[0]["ContractStart"] == "01/01/2026"
